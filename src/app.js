@@ -677,9 +677,13 @@ function phResetDeskView(){
  PH.orbitX=narrow?-.20:.05;PH.orbitZ=-.12;PH.cameraDistance=phDefaultCameraDistance();PH.viewAuto=true;
  camera.aTarget=0;camera.pTarget=1.535;camera.lookX=t.x+PH.orbitX;camera.lookZ=t.z+PH.orbitZ;
 }
+const PH_MIN_CAMERA_DISTANCE=2.75,PH_MAX_CAMERA_DISTANCE=11;
+function phClampCameraDistance(value){return Math.max(PH_MIN_CAMERA_DISTANCE,Math.min(PH_MAX_CAMERA_DISTANCE,value));}
 function phDrawerBounds(){const t=phTable();return {cx:t.x+.99,cz:t.z+1.145,w:.97,h:.30};}
 function phLoaderBounds(){const t=phTable();return {cx:t.x+.34,cz:t.z+.60,w:.36,h:.33};}
-function phPenRest(){const t=phTable();return {x:t.x+.27,z:t.z+.91};}
+// Keep the pen between the board and colour organiser. Its old foreground position sat
+// directly behind the seated HUD, so even the WebGL model looked absent on the website.
+function phPenRest(){const t=phTable();return {x:t.x+.64,z:t.z+.48};}
 function phBoardChoicePos(j){const t=phTable();return {x:t.x+.70+(j%3)*.27,z:t.z+1.055+Math.floor(j/3)*.165};}
 function phTrayBounds(){const t=phTable();return {cx:t.x-.54,cz:t.z+.73,w:1.03,h:.51,top:1.33};}
 function phTweezersRest(){const t=phTable();return {x:t.x-1.22,z:t.z+.79};}
@@ -966,8 +970,6 @@ function phCreateStatic(m){
  }else{
   for(let j=0;j<3;j++)m.box(rack.cx-.25+j*.25,1.321,rack.cz-.02,.16,.016,.18,'#f9f1e2');
  }
- // (Removed the multi-bead shaker/pen: real bead craft just needs sorted beads,
- //  tweezers and the pegboard — the extra gadget only confused the workflow.)
  // iPad display: solid black bezel, glass screen, camera lens and a home indicator.
  const screen=phReferencePlane();
  m.box(screen.x,1.326,screen.z,screen.w+.105,.15,screen.h+.105,'#434748');
@@ -1017,16 +1019,20 @@ let seatLabels=null;
 // No text tags on the desk — the objects are meant to be self-evident.
 function phRenderLabels(){const root=$('diegeticLabels');if(root?.childElementCount)root.replaceChildren();seatLabels=null;}
 function phRenderWallLabels(){const root=$('diegeticLabels');if(root?.childElementCount)root.replaceChildren();}
-function phDrawFallback(box,circle){
+function phDrawFallback(box,circle,enqueue){
  if(!PH.active)return;const t=phTable(),b=phBoardBounds(),tr=phTrayBounds();
  box(t.x,1.22,t.z,3.9,.09,3.1,'#ddba96');
  if(tableDrinks[activeTable]){const d=drinkById(tableDrinks[activeTable].id);box(t.x-1.55,1.42,t.z-.91,.25,.30,.25,d.cup||'#f4eee4');circle([t.x-1.55,1.59,t.z-.91],.10,d.drink);}
  if(PH.boardOut && PH.boardAnimating<=0){
-  box(b.cx,1.30,b.cz,b.w+.078,.055,b.h+.078,'#8faaa7');
+  // Match the WebGL board stack exactly: frame below, pale surface at y=1.320,
+  // then holes at y=1.323. The old fallback frame was taller than the holes.
+  box(b.cx,1.277,b.cz,b.w+.078,.053,b.h+.078,'#8faaa7');box(b.cx,1.309,b.cz,b.w+.032,.022,b.h+.032,'#faf8f2');
   const n=board().size,cells=board().cells,cstep=b.w/n,br=Math.max(.008,cstep*.46);
   for(let i=0;i<cells.length;i++){const id=cells[i];const xx=b.cx+((i%n+.5)/n-.5)*b.w,zz=b.cz+((Math.floor(i/n)+.5)/n-.5)*b.h;
-   if(id){circle([xx,1.33,zz],br,colorLookup[id]);circle([xx,1.335,zz],Math.max(.004,cstep*.14),'#4a3f2d');}
-   else circle([xx,1.323,zz],Math.max(.004,cstep*.22),'#746848');}
+   // A small painter-order bias keeps these coplanar details over the one-piece board
+   // surface across its full depth; WebGL gets the same result from its per-pixel z-buffer.
+   if(id){circle([xx,1.33,zz],br,colorLookup[id],-.08);circle([xx,1.335,zz],Math.max(.004,cstep*.14),'#4a3f2d',-.08);}
+   else circle([xx,1.323,zz],Math.max(.004,cstep*.22),'#746848',-.08);}
  }else for(const dx of [-.65,.65])box(b.cx+dx,1.284,b.cz,.023,.027,1.35,'#bf9b79');
  box(tr.cx,1.295,tr.cz,tr.w+.05,.08,tr.h+.07,'#a5b9ae');box(tr.cx,1.348,tr.cz,tr.w,.02,tr.h,'#e8eee9');
  for(let i=0;i<PH.tableColors.length;i++){if(PH.bin?.index===i)continue;const p=phBinPos(i),bc=phBinColor(i);
@@ -1034,8 +1040,12 @@ function phDrawFallback(box,circle){
  }
  for(const bead of PH.beads){circle([bead.x,bead.y,bead.z],.05,colorLookup[bead.id]);circle([bead.x,bead.y+.012,bead.z],.018,'#e9eee8');}
  if(PH.bin){box(PH.bin.x,1.7,PH.bin.z,.21,.14,.22,swatches[PH.bin.index].hex);}
- if(!PH.toolEquipped){const tw=phTweezersRest();box(tw.x,1.30,tw.z,.31,.04,.64,'#405a60');box(tw.x-.085,1.35,tw.z,.045,.07,.54,'#d9e4e0');box(tw.x+.085,1.35,tw.z,.045,.07,.54,'#d9e4e0');box(tw.x,1.40,tw.z-.14,.22,.09,.11,'#b5ccc6');}
- if(PH.toolEquipped&&PH.cursor){if(PH.held)circle([PH.cursor.x,1.55,PH.cursor.z],.053,colorLookup[PH.held.id]);box(PH.cursor.x,1.76,PH.cursor.z,.08,.32,.022,'#929e9b');}
+ if(!(PH.toolEquipped&&PH.tool==='tweezers')){const tw=phTweezersRest();box(tw.x,1.30,tw.z,.31,.04,.64,'#405a60');box(tw.x-.085,1.35,tw.z,.045,.07,.54,'#d9e4e0');box(tw.x+.085,1.35,tw.z,.045,.07,.54,'#d9e4e0');box(tw.x,1.40,tw.z-.14,.22,.09,.11,'#b5ccc6');}
+ if(!(PH.toolEquipped&&PH.tool==='pen')){const pr=phPenRest();box(pr.x,1.292,pr.z,.20,.03,.52,'#c9b79a');box(pr.x,1.348,pr.z-.02,.105,.10,.44,'#4f8f8c');box(pr.x,1.404,pr.z+.195,.074,.052,.085,'#e7b88b');box(pr.x,1.404,pr.z-.02,.046,.064,.30,'#c6ece8');}
+ if(PH.toolEquipped&&PH.cursor){
+  if(PH.tool==='pen'){const ink=PH.activeColor&&colorLookup[PH.activeColor]||'#cfe3e1';box(PH.cursor.x,1.74,PH.cursor.z,.07,.34,.07,'#4f8f8c');box(PH.cursor.x,1.60,PH.cursor.z,.044,.12,.044,ink);box(PH.cursor.x,1.535,PH.cursor.z,.028,.05,.028,'#e7b88b');}
+  else{if(PH.held)circle([PH.cursor.x,1.55,PH.cursor.z],.053,colorLookup[PH.held.id]);box(PH.cursor.x,1.76,PH.cursor.z,.08,.32,.022,'#929e9b');}
+ }
  const rack=phDrawerBounds();box(rack.cx,1.26,rack.cz,1.03,.10,.39,'#b38c6b');
  if(PH.drawerOpen){box(rack.cx,1.30,rack.cz+.21,.95,.03,.49,'#e5c19b');
   for(let j=0;j<PH_SIZES.length;j++){const q=phBoardChoicePos(j),sizeFactor=PH_BOARD_CHOICES[j];
@@ -1043,7 +1053,7 @@ function phDrawFallback(box,circle){
  else for(let j=0;j<3;j++)box(rack.cx-.25+j*.25,1.31,rack.cz-.02,.16,.015,.17,'#f8f3e7');
  if(PH.boardAnimating>0){const d=phDrawerBounds(),b=phBoardBounds(),f=1-PH.boardAnimating/.68;box(d.cx+(b.cx-d.cx)*f,1.35,d.cz+(b.cz-d.cz)*f,b.w+.035,.055,b.h+.035,'#eee5d8');}
  const r=phReferencePlane();box(r.x,1.37,r.z,r.w+.11,.12,r.h+.11,'#394449');box(r.x,1.424,r.z,r.w,.012,r.h,'#edf2ed');
- phDrawFallbackReference();
+ phDrawFallbackReference(enqueue);
 }
 // Reference stays on a physical board and can be swapped without touching any beads.
 // Cache actual source images (never approximate an uploaded photograph to palette colors).
@@ -1100,20 +1110,24 @@ function phDrawReferenceGL(){if(!PH.active||!gl||!phReferenceProgram)return;
  gl.uniformMatrix4fv(phReferenceAttrib.matrix,false,new Float32Array(drawMatrix));gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,entry.texture);
  gl.uniform1i(phReferenceAttrib.tex,0);gl.drawArrays(gl.TRIANGLES,0,6);gl.enable(gl.CULL_FACE);
 }
-function phDrawFallbackReference(){
+function phDrawFallbackReference(enqueue){
  if(!ctx2d||!PH.active)return;const entry=phReferenceImage();if(!entry?.ready)return;
  const r=phReferencePlane(),xx=r.x,zz=r.z,ww=r.w/2,hh=r.h/2,yy=r.y;
  const a=worldToScreen([xx-ww,yy,zz-hh]),b=worldToScreen([xx+ww,yy,zz-hh]),c=worldToScreen([xx-ww,yy,zz+hh]);
  if(!a||!b||!c)return;
  const img=entry.image,iw=img.width,ih=img.height;
- // Affine mapped into actual 3D projected surface; same camera coordinates as the pegboard.
- ctx2d.save();ctx2d.beginPath();ctx2d.moveTo(a.x,a.y);ctx2d.lineTo(b.x,b.y);
- const d={x:b.x+c.x-a.x,y:b.y+c.y-a.y};ctx2d.lineTo(d.x,d.y);ctx2d.lineTo(c.x,c.y);ctx2d.closePath();ctx2d.clip();
- // worldToScreen returns CSS pixels, while the software canvas is deliberately rendered
- // at `renderScale` CSS pixels per backing pixel. Using devicePixelRatio here made the
- // image larger than the iPad mesh and shifted most of it toward the lower-right corner.
- const scale=renderScale;ctx2d.setTransform((b.x-a.x)/iw*scale,(b.y-a.y)/iw*scale,(c.x-a.x)/ih*scale,(c.y-a.y)/ih*scale,a.x*scale,a.y*scale);
- ctx2d.drawImage(img,0,0);ctx2d.restore();
+ const draw=()=>{
+  // Affine mapped into actual 3D projected surface; same camera coordinates as the pegboard.
+  ctx2d.save();ctx2d.beginPath();ctx2d.moveTo(a.x,a.y);ctx2d.lineTo(b.x,b.y);
+  const d={x:b.x+c.x-a.x,y:b.y+c.y-a.y};ctx2d.lineTo(d.x,d.y);ctx2d.lineTo(c.x,c.y);ctx2d.closePath();ctx2d.clip();
+  // worldToScreen returns CSS pixels, while the software canvas is deliberately rendered
+  // at `renderScale` CSS pixels per backing pixel. Using devicePixelRatio here made the
+  // image larger than the iPad mesh and shifted most of it toward the lower-right corner.
+  const scale=renderScale;ctx2d.setTransform((b.x-a.x)/iw*scale,(b.y-a.y)/iw*scale,(c.x-a.x)/ih*scale,(c.y-a.y)/ih*scale,a.x*scale,a.y*scale);
+  ctx2d.drawImage(img,0,0);ctx2d.restore();
+ };
+ const depth=dot(sub([xx,yy,zz],camPos),camForward);
+ if(enqueue)enqueue(depth,draw);else draw();
 }
 function phScreenPick(px,py){
  if(!PH.active)return null;
@@ -1140,7 +1154,8 @@ function phScreenPick(px,py){
    if(tpos && Math.hypot(tpos.x-px,tpos.y-py)<42)candidates.push({type:'tweezers',d:active?30:5});
    if(Math.abs(p.x-tw.x)<.22 && Math.abs(p.z-tw.z)<.36)candidates.push({type:'tweezers',d:active?30:5});
  }
- {const pr=phPenRest(),active=PH.toolEquipped&&PH.tool==='pen';
+ {const pr=phPenRest(),ppos=worldToScreen([pr.x,1.38,pr.z]),active=PH.toolEquipped&&PH.tool==='pen';
+   if(ppos && Math.hypot(ppos.x-px,ppos.y-py)<42)candidates.push({type:'pen',d:active?30:5});
    if(Math.abs(p.x-pr.x)<.16 && Math.abs(p.z-pr.z)<.3)candidates.push({type:'pen',d:active?30:5});
  }
  candidates.sort((a,b)=>a.d-b.d);return candidates[0]||{type:'tabletop',x:p.x,z:p.z};
@@ -1210,8 +1225,9 @@ function phReturnBead(){if(!PH.held)return;
  for(let k=0;k<want;k++){const compartment=swatches.findIndex(s=>s.id===id)%4;PH.beads.push({id,compartment,x:b.cx-b.w*.375+compartment*b.w*.25+(Math.random()-.5)*.10,z:b.cz+(Math.random()-.5)*.25,y:1.7,vx:0,vy:0,vz:0,rest:false});}
  PH.held=null;PH.cursor=null;updateStatic();updateSeatHud();
 }
-// Zoom the seated camera. dir<0 moves closer (down to 1.0), dir>0 pulls back.
-function phZoom(dir){if(!PH.active)return;PH.viewAuto=false;const step=dir*Math.max(.16,PH.cameraDistance*.12);PH.cameraDistance=Math.max(1.0,Math.min(11,PH.cameraDistance+step));}
+// Keep the seated camera above every tabletop prop. Moving closer used to put the eye
+// inside the held pen/iPad geometry, which caused near-plane clipping and severe stretching.
+function phZoom(dir){if(!PH.active)return;PH.viewAuto=false;const step=dir*Math.max(.16,PH.cameraDistance*.12);PH.cameraDistance=phClampCameraDistance(PH.cameraDistance+step);}
 // One zoom command shared by mobile buttons, pinch gestures and the mouse wheel.
 // amount>0 zooms in; amount<0 zooms out in every camera mode.
 function adjustViewZoom(amount){
@@ -2524,7 +2540,7 @@ function wire(){
   clearSeatTouchPending();pointer=null;PH.pointer=null;if(PH.active)PH.viewAuto=false;scene.classList.remove('dragging');for(const [id] of points)scenePinchIds.add(id);
   const mode=PH.active?'seat':firstPerson&&!PH.wall?'fov':'distance',value=mode==='seat'?PH.cameraDistance:mode==='fov'?camera.fovTarget:camera.dTarget;scenePinch={distance,mode,value};};
  const moveScenePinch=()=>{if(!scenePinch)return;const points=[...scenePinchIds].map(id=>sceneTouchPoints.get(id)).filter(Boolean).slice(0,2);if(points.length<2)return;const distance=Math.max(12,Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y)),ratio=Math.max(.35,Math.min(3,distance/scenePinch.distance)),next=scenePinch.value/ratio;
-  if(scenePinch.mode==='seat')PH.cameraDistance=Math.max(1,Math.min(11,next));else if(scenePinch.mode==='fov')camera.fov=camera.fovTarget=Math.max(.52,Math.min(1.35,next));else{const min=PH.wall?5.2:16,max=PH.wall?18:53;camera.dTarget=Math.max(min,Math.min(max,next));}};
+  if(scenePinch.mode==='seat')PH.cameraDistance=phClampCameraDistance(next);else if(scenePinch.mode==='fov')camera.fov=camera.fovTarget=Math.max(.52,Math.min(1.35,next));else{const min=PH.wall?5.2:16,max=PH.wall?18:53;camera.dTarget=Math.max(min,Math.min(max,next));}};
  const releaseSceneTouch=e=>{if(e.pointerType==='touch')sceneTouchPoints.delete(e.pointerId);if(!scenePinchIds.has(e.pointerId))return false;scenePinchIds.delete(e.pointerId);if(sceneTouchPoints.size<2)scenePinch=null;pointer=null;PH.pointer=null;scene.classList.remove('dragging');return true;};
  scene.addEventListener('pointerdown',e=>{if(activeModal||PH.picker)return;
   if(e.pointerType==='touch'){e.preventDefault();sceneTouchPoints.set(e.pointerId,{x:e.clientX,y:e.clientY});try{scene.setPointerCapture(e.pointerId);}catch(_e){}if(sceneTouchPoints.size>=2){beginScenePinch();return;}}
@@ -2577,13 +2593,19 @@ function drawFallback(){
  const c=ctx2d,s=renderScale,w=layout.width,h=layout.height;
  c.setTransform(s,0,0,s,0,0);c.clearRect(0,0,w,h);
  const grad=c.createLinearGradient(0,0,w,h);grad.addColorStop(0,'#fcf6ec');grad.addColorStop(1,'#e9dac8');c.fillStyle=grad;c.fillRect(0,0,w,h);
- const polygon=(pts,color)=>{const ps=pts.map(worldToScreen);if(ps.some(p=>!p))return;c.beginPath();ps.forEach((p,i)=>i?c.lineTo(p.x,p.y):c.moveTo(p.x,p.y));c.closePath();c.fillStyle=color;c.fill();};
+ // Canvas has no depth buffer. Queue every projected primitive and paint far-to-near so
+ // furniture and hand-held tools do not leak through one another as the camera moves.
+ const drawQueue=[];
+ const depthOf=pts=>pts.reduce((sum,p)=>sum+dot(sub(p,camPos),camForward),0)/pts.length;
+ const enqueue=(depth,draw)=>drawQueue.push({depth,order:drawQueue.length,draw});
+ const flush=()=>{drawQueue.sort((a,b)=>b.depth-a.depth||a.order-b.order);for(const item of drawQueue)item.draw();};
+ const polygon=(pts,color)=>{const ps=pts.map(worldToScreen);if(ps.some(p=>!p))return;enqueue(depthOf(pts),()=>{c.beginPath();ps.forEach((p,i)=>i?c.lineTo(p.x,p.y):c.moveTo(p.x,p.y));c.closePath();c.fillStyle=color;c.fill();});};
  const box=(x,y,z,wd,ht,dp,color)=>{const L=x-wd/2,R=x+wd/2,B=y-ht/2,T=y+ht/2,N=z-dp/2,F=z+dp/2;
   polygon([[L,B,F],[R,B,F],[R,T,F],[L,T,F]],color);
   polygon([[R,B,F],[R,B,N],[R,T,N],[R,T,F]],shade(color,.86));
   polygon([[L,T,N],[L,T,F],[R,T,F],[R,T,N]],shade(color,1.08));
  };
- const circle=(pos,r,color)=>{const point=worldToScreen(pos),other=worldToScreen([pos[0]+r,pos[1],pos[2]]);if(!point||!other)return;const rad=Math.max(.8,Math.hypot(point.x-other.x,point.y-other.y));c.fillStyle=color;c.beginPath();c.arc(point.x,point.y,rad,0,Math.PI*2);c.fill();};
+ const circle=(pos,r,color,depthBias=0)=>{const point=worldToScreen(pos),other=worldToScreen([pos[0]+r,pos[1],pos[2]]);if(!point||!other)return;const rad=Math.max(.8,Math.hypot(point.x-other.x,point.y-other.y));enqueue(depthOf([pos])+depthBias,()=>{c.fillStyle=color;c.beginPath();c.arc(point.x,point.y,rad,0,Math.PI*2);c.fill();});};
  polygon([[-17,0,-19.7],[17,0,-19.7],[17,0,21],[-17,0,21]],'#ddc2a1');
  for(let x=-16.5;x<17;x+=1.12)box(x,-.03,1,1,.045,41.2,Math.floor(x)%2?'#e8cfaf':'#e3c5a0');
  polygon([[-17,0,-19.7],[17,0,-19.7],[17,6.7,-19.7],[-17,6.7,-19.7]],'#f3e5d4');
@@ -2664,7 +2686,7 @@ function drawFallback(){
  box(-11.4,.87,12,6.7,1.58,2.2,'#ba8b68');box(-11.4,1.72,12,6.9,.14,2.3,'#ebcfaf');
  box(-11.95,2.5,19.79,9.15,4.7,.6,'#a88768');
  const fDH=WALL_STEPY*.82;for(let i=0;i<swatches.length;i++){const s=wallSlot(i),x=s.x,y=s.y;box(x,y,19.22,.9,fDH*.95,.45,'#f0e2cc');box(x,y+fDH*.07,18.96,.78,fDH*.5,.12,glHex(swatches[i].id));
-   box(x,y-fDH*.33,18.88,.3,.09,.06,'#fff8eb');const pp=worldToScreen([x,y-fDH*.33,18.84]);if(pp){c.save();c.fillStyle='#55473b';c.font='bold 9px Arial';c.textAlign='center';c.textBaseline='middle';c.fillText(swatches[i].id,pp.x,pp.y);c.restore();}
+   box(x,y-fDH*.33,18.88,.3,.09,.06,'#fff8eb');const labelPos=[x,y-fDH*.33,18.84],pp=worldToScreen(labelPos);if(pp){const label=swatches[i].id;enqueue(depthOf([labelPos]),()=>{c.save();c.fillStyle='#55473b';c.font='bold 9px Arial';c.textAlign='center';c.textBaseline='middle';c.fillText(label,pp.x,pp.y);c.restore();});}
  }
  box(-12,.66,16.75,7.5,1.1,2.15,'#b68a65');box(-12,1.28,16.75,7.7,.17,2.28,'#ecd1ad');
  for(const [x,z] of [[-2,15.7],[1.4,16.25]])box(x,.45,z,2.1,.85,1.1,'#c0a38a');
@@ -2692,13 +2714,14 @@ function drawFallback(){
  // Interior has a visible door opening in the west partition.
  box(13.1,1.82,9.8,7.7,3.65,.24,'#e9d7c1');
  box(9.26,1.83,11.5,.27,3.64,3.4,'#e6cfb5');box(9.26,1.83,17.95,.27,3.64,4.7,'#e6cfb5');box(9.26,3.22,14.15,.28,.84,2.30,'#c39a78');
- phDrawFallback(box,circle);
- if(PH.active)return;
+ phDrawFallback(box,circle,enqueue);
+ if(PH.active){flush();return;}
  circle([player.x,.49,player.z],.33,'#a5bba4');circle([player.x,.97,player.z],.30,'#f3d6bc');circle([player.x,.99,player.z-.09],.30,'#765440');
  circle([player.x-.10,.86,player.z+.30],.026,'#553c34');circle([player.x+.10,.86,player.z+.30],.026,'#553c34');
  if(carriedBoard){box(player.x,.61,player.z+.37,1.05,.07,.74,'#f2dfc4');const work=tableBoards[carriedBoard];for(let py=0;py<8;py++)for(let px=0;px<10;px++){const sx=Math.min(work.size-1,Math.floor((px+.5)*work.size/10)),sy=Math.min(work.size-1,Math.floor((py+.5)*work.size/8)),id=work.cells[sy*work.size+sx];if(id)circle([player.x+(px-4.5)*.09,.66,player.z+.37+(py-3.5)*.08],.035,colorLookup[id]);}}
  else if(carriedProduct){const work={size:carriedProduct.size,cells:carriedProduct.cells||unpackCells(carriedProduct.pixels,carriedProduct.size)};box(player.x,.65,player.z+.37,.65,.06,.65,carriedProduct.mount==='frame'?'#946e50':'#f2dfc4');for(let py=0;py<7;py++)for(let px=0;px<7;px++){const id=sampledColor(work,px,py,7);if(id)circle([player.x+(px-3)*.078,.69,player.z+.37+(py-3)*.078],.032,colorLookup[id]);}}
  else{const d=currentDrink();if(d){box(player.x+.43,.63,player.z+.3,.24,.3,.24,d.cup);box(player.x+.43,.80,player.z+.3,.27,.04,.27,'#fff9ed');}}
+ flush();
 }
 function mountSoundToggle(){
  // The topbar is hidden in the immersive view, so the sound switch is a standalone
