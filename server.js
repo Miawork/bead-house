@@ -14,7 +14,7 @@ const { WebSocketServer, WebSocket } = require('ws');
 
 const ROOT = __dirname;
 const TABLES = Array.from({ length: 12 }, (_, index) => String.fromCharCode(65 + index));
-const ALLOWED_TYPES = new Set(['hi', 'bye', 'state', 'board', 'gallery:add', 'table:drink', 'player:save']);
+const ALLOWED_TYPES = new Set(['hi', 'bye', 'state', 'board', 'gallery:add', 'gallery:put', 'gallery:remove', 'table:drink', 'player:save']);
 const MAX_MESSAGE_BYTES = 128 * 1024;
 const DEFAULT_LEGACY_ROOM_URL = 'https://bead-house-stage2-1-preview.vercel.app/api/room';
 const MIME = {
@@ -32,14 +32,14 @@ const MIME = {
 };
 
 function emptyStore() {
-  return { version: 1, legacySeeded: false, boards: {}, gallery: {}, drinks: {}, players: {} };
+  return { version: 2, legacySeeded: false, boards: {}, gallery: {}, galleryRemoved: {}, drinks: {}, players: {} };
 }
 
 function normalizeStore(value) {
   const clean = emptyStore();
   if (!value || typeof value !== 'object') return clean;
   clean.legacySeeded = Boolean(value.legacySeeded);
-  for (const key of ['boards', 'gallery', 'drinks', 'players']) {
+  for (const key of ['boards', 'gallery', 'galleryRemoved', 'drinks', 'players']) {
     if (value[key] && typeof value[key] === 'object' && !Array.isArray(value[key])) clean[key] = value[key];
   }
   return clean;
@@ -64,10 +64,11 @@ function createBeadHouseServer(options = {}) {
 
   function durableSnapshot() {
     return JSON.stringify({
-      version: 1,
+      version: 2,
       legacySeeded: store.legacySeeded,
       boards: store.boards,
       gallery: store.gallery,
+      galleryRemoved: store.galleryRemoved,
       drinks: store.drinks,
       players: store.players
     });
@@ -128,7 +129,7 @@ function createBeadHouseServer(options = {}) {
         if (TABLES.includes(board?.table) && !store.boards[board.table]) store.boards[board.table] = board;
       }
       for (const item of payload.gallery || []) {
-        if (typeof item?.id === 'string' && !store.gallery[item.id]) store.gallery[item.id] = item;
+        if (typeof item?.id === 'string' && !store.gallery[item.id] && !store.galleryRemoved[item.id]) store.gallery[item.id] = item;
       }
       for (const drink of payload.tableDrinks || []) {
         if (TABLES.includes(drink?.table) && !store.drinks[drink.table]) store.drinks[drink.table] = drink;
@@ -172,7 +173,19 @@ function createBeadHouseServer(options = {}) {
       store.boards[message.table] = received;
       changed = true;
     } else if (message.t === 'gallery:add' && message.item && typeof message.item.id === 'string') {
-      if (!store.gallery[message.item.id]) store.gallery[message.item.id] = message.item;
+      if (!store.gallery[message.item.id] && !store.galleryRemoved[message.item.id]) store.gallery[message.item.id] = message.item;
+      appendEvent(received);
+      changed = true;
+    } else if (message.t === 'gallery:put' && message.item && typeof message.item.id === 'string') {
+      store.gallery[message.item.id] = message.item;
+      delete store.galleryRemoved[message.item.id];
+      if (message.state && typeof message.state === 'object') store.players[message.id] = message.state;
+      appendEvent(received);
+      changed = true;
+    } else if (message.t === 'gallery:remove' && typeof message.itemId === 'string' && message.itemId.length <= 96) {
+      delete store.gallery[message.itemId];
+      store.galleryRemoved[message.itemId] = received._roomAt;
+      if (message.state && typeof message.state === 'object') store.players[message.id] = message.state;
       appendEvent(received);
       changed = true;
     } else if (message.t === 'table:drink' && TABLES.includes(message.table) &&
@@ -290,7 +303,7 @@ function createBeadHouseServer(options = {}) {
     socket.isAlive = true;
     socket.on('pong', () => { socket.isAlive = true; });
     for (const item of Object.values(store.gallery)) {
-      socket.send(JSON.stringify({ t: 'gallery:add', id: 'wish-wall-server', item, sync: true }));
+      socket.send(JSON.stringify({ t: 'gallery:put', id: 'wish-wall-server', item, sync: true }));
     }
     socket.send(JSON.stringify({ t: 'hi', id: 'wish-wall-server' }));
     socket.on('message', data => {

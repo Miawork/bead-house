@@ -17,20 +17,18 @@
   <div class="gradient-bottom"></div>
   <div id="diegeticLabels" aria-hidden="true"></div>
   <button id="physicalStand" type="button" aria-label="起身离开座位" title="起身">↶</button>
-  <button id="carryDrink" class="carry-drink hidden" type="button" aria-label="喝一口手里的饮料">
-    <span id="carryDrinkIcon">☕</span><span><b id="carryDrinkName">饮料</b><small id="carryDrinkSips">点击饮用</small></span>
-  </button>
   <div id="carryBoard" class="carry-board hidden" role="status" aria-live="polite">
     <span>▦</span><span><b id="carryBoardName">拼好的底板</b><small id="carryBoardState">平稳 · 拼豆安全</small></span>
   </div>
   <div id="carryProduct" class="carry-product hidden" role="status" aria-live="polite">
-    <span>✦</span><span><b id="carryProductName">烫好的成品</b><small>点击墙面任意位置挂上 · E 挂在面前</small></span>
+    <span>✦</span><span><b id="carryProductName">烫好的成品</b><small>走近任意墙面，点击想挂的位置</small></span>
   </div>
   <canvas id="carryView" class="carry-view hidden" width="560" height="250" aria-hidden="true"></canvas>
+  <button id="carryCupHit" class="carry-cup-hit hidden" type="button" aria-label="点击手里的杯子喝一口"></button>
   <div id="seatHud" class="hidden" aria-live="polite">
     <div class="seat-hud-main"><span class="seat-tool-ico" id="seatToolIco">✋</span><div class="seat-hud-text"><b id="seatToolName">空手</b><small id="seatHeldLine">点分格盒里的散豆夹取；在钉板上点一下或拖动摆豆</small></div></div>
     <div class="seat-hud-grab" role="group" aria-label="每次夹取数量"><span>夹取量</span><button type="button" data-grab="1">1</button><button type="button" data-grab="10">10</button><button type="button" data-grab="50">50</button><button type="button" data-grab="all">整盒</button></div>
-    <div class="seat-hud-zoom" role="group" aria-label="缩放画板"><button id="seatZoomOut" type="button" aria-label="缩小">－</button><button id="seatZoomIn" type="button" aria-label="放大">＋</button></div>
+    <div class="seat-hud-zoom" role="group" aria-label="调整画板视角"><button id="seatZoomOut" type="button" aria-label="缩小">－</button><button id="seatViewReset" type="button" aria-label="恢复正视角" title="回正">⌖</button><button id="seatZoomIn" type="button" aria-label="放大">＋</button></div>
     <div class="seat-hud-actions"><button id="seatBoardAction" class="hidden" type="button">拿起拼好的底板</button><button id="seatDrinkAction" class="hidden" type="button">饮料放桌上</button><button id="seatPutDown" type="button">放下工具</button><button id="seatReturn" type="button">退回托盘</button></div>
   </div>
   <span id="physicalIronGlow"></span><span id="physicalNudge"></span>
@@ -211,7 +209,7 @@
       </div>
     </div>
   </section>
-  <section class="info-modal hidden" id="info" role="dialog" aria-modal="true" aria-label="多人心愿墙说明"><button class="close-button float-close" id="infoClose" aria-label="关闭">×</button><div class="info-hero">✦ 多人拼豆心愿墙 ✦</div><div class="info-body"><div class="eyebrow dark">THE SHARED WISH WALL</div><h2>每一个位置，都可以挂上心愿。</h2><p>完成熨烫并选择配件后，把成品亲自拿到北面的墙前，点击任意墙面位置挂上；也可以按 E 挂在面前。作品允许互相叠放覆盖，但底下的旧作品仍会完整保留，不会因为新作品出现而被删除。</p><p id="galleryCount" class="gallery-counter"></p><button class="primary-button" id="infoOkay">返回工作室 <span>↗</span></button></div></section>
+  <section class="info-modal hidden" id="info" role="dialog" aria-modal="true" aria-label="多人心愿墙说明"><button class="close-button float-close" id="infoClose" aria-label="关闭">×</button><div class="info-hero">✦ 多人拼豆心愿墙 ✦</div><div class="info-body"><div class="eyebrow dark">THE SHARED WISH WALL</div><h2>每一面墙，都可以挂上心愿。</h2><p>完成熨烫并选择配件后，把成品亲自拿到任意墙面前，点击想挂的位置。空手点击墙上的成品可以取下来，之后再挂到其他墙面。作品允许互相叠放覆盖，所有位置、取下状态和手持状态都会保存到云端。</p><p id="galleryCount" class="gallery-counter"></p><button class="primary-button" id="infoOkay">返回工作室 <span>↗</span></button></div></section>
   <section class="info-modal help-modal hidden" id="help" role="dialog" aria-modal="true" aria-label="简单操作">
     <button class="close-button float-close" id="helpClose" aria-label="关闭">×</button>
     <div class="info-body"><h2>在小店里走走</h2>

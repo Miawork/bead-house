@@ -32,11 +32,14 @@ test('serves the game and persists the complete shared room', async t => {
   assert.equal((await fetch(`${running.origin}/healthz`)).status, 200);
   const home = await fetch(running.origin);
   assert.equal(home.status, 200);
-  assert.match(await home.text(), /mobileSceneZoom/);
+  const homeHtml = await home.text();
+  assert.match(homeHtml, /mobileSceneZoom/);
+  assert.match(homeHtml, /id="carryCupHit"/);
+  assert.doesNotMatch(homeHtml, /id="carryDrink"/);
 
   const messages = [
     { t: 'board', id: 'p-test-user', mid: 'board-1', table: 'A', size: 16, cells: 'A'.repeat(256) },
-    { t: 'gallery:add', id: 'p-test-user', mid: 'gallery-1', item: { id: 'wish-1', author: '测试玩家', pixels: 'AAAA' } },
+    { t: 'gallery:add', id: 'p-test-user', mid: 'gallery-1', item: { id: 'wish-1', author: '测试玩家', pixels: 'AAAA', wallId: 'north', wallU: 1, wallY: 3 } },
     { t: 'table:drink', id: 'p-test-user', mid: 'drink-1', table: 'A', item: { id: 'latte', sips: 5 } },
     { t: 'player:save', id: 'p-test-user', mid: 'player-1', state: { nickname: '测试玩家', hand: { board: 'A' } } }
   ];
@@ -49,13 +52,28 @@ test('serves the game and persists the complete shared room', async t => {
   assert.equal(snapshot.tableDrinks[0].item.id, 'latte');
   assert.equal(snapshot.player.nickname, '测试玩家');
 
+  const heldProduct = { id: 'wish-1', size: 16, pixels: 'A'.repeat(256), mount: 'frame' };
+  assert.equal((await post(running.origin, { t: 'gallery:remove', id: 'p-test-user', mid: 'gallery-remove-1', itemId: 'wish-1', state: { nickname: '测试玩家', hand: { product: heldProduct } } })).status, 202);
+  snapshot = await (await fetch(`${running.origin}/api/room?gallery=1&player=p-test-user`)).json();
+  assert.equal(snapshot.gallery.length, 0);
+  assert.equal(snapshot.player.hand.product.id, 'wish-1');
+
   await running.app.close();
   running = await start(dataDir);
   t.after(() => running.app.server.listening && running.app.close());
   snapshot = await (await fetch(`${running.origin}/api/room?boards=1&gallery=1&drinks=1&player=p-test-user`)).json();
   assert.equal(snapshot.boards[0].mid, 'board-1');
-  assert.equal(snapshot.gallery[0].id, 'wish-1');
-  assert.equal(snapshot.player.hand.board, 'A');
+  assert.equal(snapshot.gallery.length, 0);
+  assert.equal(snapshot.player.hand.product.id, 'wish-1');
+
+  assert.equal((await post(running.origin, { t: 'gallery:put', id: 'p-test-user', mid: 'gallery-put-2', item: { id: 'wish-1', author: '测试玩家', pixels: 'AAAA', wallId: 'east', wallU: 4, wallY: 2 }, state: { nickname: '测试玩家', hand: { product: null } } })).status, 202);
+  await running.app.close();
+  running = await start(dataDir);
+  snapshot = await (await fetch(`${running.origin}/api/room?gallery=1`)).json();
+  assert.equal(snapshot.gallery[0].wallId, 'east');
+  assert.equal(snapshot.gallery[0].wallU, 4);
+  snapshot = await (await fetch(`${running.origin}/api/room?player=p-test-user`)).json();
+  assert.equal(snapshot.player.hand.product, null);
 });
 
 test('relays live multiplayer messages through the same-origin WebSocket', async t => {

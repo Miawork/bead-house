@@ -32,9 +32,6 @@
  border-radius:50%;width:43px;height:43px;background:#fff8edc9;box-shadow:0 3px 16px #52412b30;
  backdrop-filter:blur(8px);font-size:25px;color:#675c4c;cursor:pointer}
 .desk-focused #physicalStand{display:block}
-.carry-drink{position:absolute;right:20px;bottom:22px;z-index:13;display:flex;align-items:center;gap:9px;border:1px solid #f5e7d2;border-radius:15px;padding:8px 12px;background:#fff8edeb;color:#674e39;box-shadow:0 8px 26px #3e291b35;backdrop-filter:blur(9px);text-align:left}
-.carry-drink.modal-hidden{display:none}
-.carry-drink>span:first-child{font-size:25px}.carry-drink b{display:block;font-size:12px}.carry-drink small{display:block;margin-top:2px;font-size:9px;color:#967b62}.carry-drink:hover{background:#fff}
 .carry-board{position:absolute;right:20px;bottom:22px;z-index:13;display:flex;align-items:center;gap:10px;border:2px solid #d2a86f;border-radius:15px;padding:9px 13px;background:#fff4ddeb;color:#65482f;box-shadow:0 8px 28px #3e291b40;backdrop-filter:blur(9px);text-align:left;pointer-events:none}
 .carry-board.modal-hidden{display:none}.carry-board>span:first-child{font-size:27px}.carry-board b{display:block;font-size:12px}.carry-board small{display:block;margin-top:2px;font-size:9px;color:#8f6e50}
 .carry-board.is-warning{border-color:#d49752;background:#fff0d7eb}.carry-board.is-warning small{color:#9a642b}
@@ -44,7 +41,9 @@
 .carry-product.modal-hidden{display:none}.carry-product>span:first-child{font-size:25px;color:#bd8461}.carry-product b{display:block;font-size:12px}.carry-product small{display:block;margin-top:2px;font-size:9px;color:#8f6e50}
 .carry-view{position:absolute;left:50%;bottom:-4px;z-index:9;width:min(560px,78vw);height:auto;transform:translateX(-50%);pointer-events:none;filter:drop-shadow(0 12px 13px #39261642);image-rendering:auto}
 .carry-view.hidden{display:none!important}
-@media(max-width:600px){.carry-drink,.carry-board,.carry-product{right:12px;bottom:14px;padding:7px 9px}.desk-focused .carry-drink{bottom:132px}.carry-view{width:min(510px,94vw);bottom:1px}}
+.carry-cup-hit{position:absolute;left:50%;bottom:16px;z-index:14;width:clamp(104px,21vw,158px);height:clamp(142px,28vw,196px);transform:translateX(-50%);border:0;border-radius:42% 42% 28% 28%;background:transparent;cursor:pointer;touch-action:manipulation}
+.carry-cup-hit:hover{background:#fff2}.carry-cup-hit:active{transform:translateX(-50%) scale(.98)}
+@media(max-width:600px){.carry-board,.carry-product{right:12px;bottom:14px;padding:7px 9px}.carry-view{width:min(510px,94vw);bottom:1px}.carry-cup-hit{bottom:13px}}
 #physicalNudge{position:absolute;pointer-events:none;width:44px;height:44px;left:50%;top:60%;border:2px solid transparent;border-radius:50%;opacity:0}
 #physicalNudge.nudge{animation:phNudge .42s ease}
 @keyframes phNudge{0%{opacity:0;transform:scale(.4);border-color:#d59687}40%{opacity:1;transform:scale(1.6)}100%{opacity:0;transform:scale(2.4)}}
