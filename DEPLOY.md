@@ -50,7 +50,7 @@ railway domain list
 
 ## GitHub 自动部署
 
-Railway 服务连接 GitHub 仓库的 `main` 分支后，每次 push 会自动构建和发布：
+Railway 服务已连接私有 GitHub 仓库 `Miawork/bead-house` 的 `main` 分支。每次 push 会自动构建和发布；无需手动执行 `railway up`。连接命令为：
 
 ```bash
 railway service source connect --repo Miawork/bead-house --branch main --service bead-house
