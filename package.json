@@ -1,0 +1,23 @@
+{
+  "name": "bead-house-stage1",
+  "private": true,
+  "version": "0.1.6",
+  "description": "Minimal spatial 3D bead-craft shop with café and per-table materials",
+  "scripts": {
+    "dev": "python3 -m http.server 4173",
+    "check": "node --check src/app.js",
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@vercel/blob": "^2.9.0",
+    "@vercel/functions": "^3.11.3",
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "railway": "^3.17.0"
+  }
+}
