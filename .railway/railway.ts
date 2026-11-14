@@ -1,4 +1,4 @@
-import { defineRailway, project, service, volume } from "railway/iac";
+import { defineRailway, github, project, service, volume } from "railway/iac";
 
 const SINGAPORE = "asia-southeast1-eqsg3a";
 
@@ -9,6 +9,9 @@ export default defineRailway(() => {
   });
 
   const web = service("bead-house", {
+    source: github("Miawork/bead-house", {
+      branch: "main",
+    }),
     start: "node server.js",
     healthcheck: "/healthz",
     healthcheckTimeout: 120,
