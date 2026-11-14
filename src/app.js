@@ -1109,7 +1109,10 @@ function phDrawFallbackReference(){
  // Affine mapped into actual 3D projected surface; same camera coordinates as the pegboard.
  ctx2d.save();ctx2d.beginPath();ctx2d.moveTo(a.x,a.y);ctx2d.lineTo(b.x,b.y);
  const d={x:b.x+c.x-a.x,y:b.y+c.y-a.y};ctx2d.lineTo(d.x,d.y);ctx2d.lineTo(c.x,c.y);ctx2d.closePath();ctx2d.clip();
- const dpr=Math.min(devicePixelRatio||1,1.6);ctx2d.setTransform((b.x-a.x)/iw*dpr,(b.y-a.y)/iw*dpr,(c.x-a.x)/ih*dpr,(c.y-a.y)/ih*dpr,a.x*dpr,a.y*dpr);
+ // worldToScreen returns CSS pixels, while the software canvas is deliberately rendered
+ // at `renderScale` CSS pixels per backing pixel. Using devicePixelRatio here made the
+ // image larger than the iPad mesh and shifted most of it toward the lower-right corner.
+ const scale=renderScale;ctx2d.setTransform((b.x-a.x)/iw*scale,(b.y-a.y)/iw*scale,(c.x-a.x)/ih*scale,(c.y-a.y)/ih*scale,a.x*scale,a.y*scale);
  ctx2d.drawImage(img,0,0);ctx2d.restore();
 }
 function phScreenPick(px,py){
