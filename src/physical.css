@@ -5,6 +5,8 @@
 /* The room now uses a native Retina backing store. Browser interpolation keeps diagonal
    furniture/iPad edges stable instead of magnifying low-resolution stair steps. */
 #scene{image-rendering:auto}
+/* Keep the native-size Canvas2D fallback out of an extra blurred interpolation pass. */
+body[data-renderer="software-perspective"] #scene{image-rendering:-webkit-optimize-contrast!important;image-rendering:crisp-edges!important;image-rendering:pixelated!important}
 /* Standalone sound switch — the topbar (and its toggle) is hidden in this immersive view. */
 .floating-sound{position:absolute;right:19px;top:19px;z-index:14;border:0;border-radius:50%;
  width:43px;height:43px;background:#fff8edc9;box-shadow:0 3px 16px #52412b30;backdrop-filter:blur(8px);

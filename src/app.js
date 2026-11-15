@@ -53,7 +53,10 @@ const SFX=(()=>{
  return api;
 })();
 const scene = $('scene');
-const gl = scene.getContext('webgl', { antialias:true, alpha:false, preserveDrawingBuffer:false }); // MSAA on the low-res buffer kills distant edge shimmer; nearest upscale still keeps crisp pixels
+// Keep the legacy context name for older Safari and embedded browsers. Some iPads otherwise
+// fall all the way back to the flatter Canvas2D renderer even though they can run WebGL.
+const GL_OPTIONS={antialias:true,alpha:false,preserveDrawingBuffer:false,powerPreference:'high-performance'};
+const gl=scene.getContext('webgl',GL_OPTIONS)||scene.getContext('experimental-webgl',GL_OPTIONS);
 const ROOM = { minX:-16.4, maxX:16.4, minZ:-18.3, maxZ:20.4 };
 const names = Array.from({length:12},(_,i)=>String.fromCharCode(65+i));
 // Craft nooks, L-shaped groups and shared worktables are scattered naturally like a real handmade shop.
@@ -141,7 +144,7 @@ try{scene.style.imageRendering='auto';}catch(_e){}
 let renderScale=1;      // backing-buffer px per CSS px, shared by the 2D fallback
 let last=performance.now(),firstFrame=false,glStatic=null,glPlayer=null,staticVertexCount=0;
 let drawMatrix=null,camPos=[0,0,0],camForward=[0,0,0],camRight=[0,0,0],camUp=[0,0,0];
-let fallback2d=false,ctx2d=null,lastFallbackPaint=0;
+let fallback2d=false,ctx2d=null,lastFallbackPaint=0,fallbackFrameInterval=40;
 let program=null,loc={},pendingTable=null,pendingStation=false,pendingBeadStation=false;
 let shadowProg=null,shadowLoc={},glShadowStatic=null,glShadowPlayer=null,shadowStaticCount=0;
 let partProg=null,partLoc={},glParts=null,particles=[],partSpawn={coffee:0,iron:0,dust:0,drink:0};
@@ -2118,7 +2121,7 @@ function update(dt){
 }
 function frame(now){resize();const dt=Math.min((now-last)/1000,.06);last=now;update(dt);stepParticles(dt);if(PH.active)updateSeatHud();calcCamera();drawCarryView();
  if(gl&&program){gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.useProgram(program);gl.uniformMatrix4fv(loc.m,false,new Float32Array(drawMatrix));if(loc.cam)gl.uniform3fv(loc.cam,new Float32Array(camPos));drawMesh(glStatic,staticVertexCount);drawShadows();const actor=buildPlayer();buildPeers(actor);phCreateDynamic(actor);gl.bindBuffer(gl.ARRAY_BUFFER,glPlayer);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(actor.data),gl.DYNAMIC_DRAW);drawMesh(glPlayer,actor.count);phDrawReferenceGL();drawParticles();}
- if(fallback2d&&now-lastFallbackPaint>115){lastFallbackPaint=now;drawFallback();}
+ if(fallback2d&&now-lastFallbackPaint>=fallbackFrameInterval){lastFallbackPaint=now;const started=performance.now();drawFallback();const cost=performance.now()-started;fallbackFrameInterval=Math.max(33,Math.min(85,cost*1.75));document.body.dataset.fallbackFrameMs=String(Math.round(fallbackFrameInterval));}
  updateLabels();renderPeerTags();if(!firstFrame){firstFrame=true;document.body.dataset.rendered='1';}requestAnimationFrame(frame);
 }
 function openModal(id){if(activeModal)$(activeModal).classList.add('hidden');activeModal=id;$('modalBack').classList.remove('hidden');$(id).classList.remove('hidden');$('soundToggle')?.classList.add('hidden');$('carryCupHit')?.classList.add('hidden');$('carryBoard')?.classList.add('modal-hidden');$('carryProduct')?.classList.add('modal-hidden');SFX.ui();}
@@ -2598,21 +2601,23 @@ function shade(hex,factor){const v=parseInt(hex.slice(1),16);return '#'+[16,8,0]
 function drawFallback(){
  if(!ctx2d)return;
  const c=ctx2d,s=renderScale,w=layout.width,h=layout.height;
- c.setTransform(s,0,0,s,0,0);c.clearRect(0,0,w,h);
- const grad=c.createLinearGradient(0,0,w,h);grad.addColorStop(0,'#fcf6ec');grad.addColorStop(1,'#e9dac8');c.fillStyle=grad;c.fillRect(0,0,w,h);
+ c.setTransform(s,0,0,s,0,0);c.imageSmoothingEnabled=false;c.lineJoin='round';c.lineCap='round';c.clearRect(0,0,w,h);
+ // Deeper neutral values keep the software scene from dissolving into a pale haze.
+ const grad=c.createLinearGradient(0,0,w,h);grad.addColorStop(0,'#f7efe4');grad.addColorStop(1,'#dcc7b3');c.fillStyle=grad;c.fillRect(0,0,w,h);
  // Canvas has no depth buffer. Queue every projected primitive and paint far-to-near so
  // furniture and hand-held tools do not leak through one another as the camera moves.
  const drawQueue=[];
  const depthOf=pts=>pts.reduce((sum,p)=>sum+dot(sub(p,camPos),camForward),0)/pts.length;
  const enqueue=(depth,draw)=>drawQueue.push({depth,order:drawQueue.length,draw});
  const flush=()=>{drawQueue.sort((a,b)=>b.depth-a.depth||a.order-b.order);for(const item of drawQueue)item.draw();};
- const polygon=(pts,color)=>{const ps=pts.map(worldToScreen);if(ps.some(p=>!p))return;enqueue(depthOf(pts),()=>{c.beginPath();ps.forEach((p,i)=>i?c.lineTo(p.x,p.y):c.moveTo(p.x,p.y));c.closePath();c.fillStyle=color;c.fill();});};
+ const polygon=(pts,color,edge=null)=>{const ps=pts.map(worldToScreen);if(ps.some(p=>!p))return;enqueue(depthOf(pts),()=>{c.beginPath();ps.forEach((p,i)=>i?c.lineTo(p.x,p.y):c.moveTo(p.x,p.y));c.closePath();c.fillStyle=color;c.fill();if(edge){c.strokeStyle=edge;c.lineWidth=.62;c.stroke();}});};
  const box=(x,y,z,wd,ht,dp,color)=>{const L=x-wd/2,R=x+wd/2,B=y-ht/2,T=y+ht/2,N=z-dp/2,F=z+dp/2;
-  polygon([[L,B,F],[R,B,F],[R,T,F],[L,T,F]],color);
-  polygon([[R,B,F],[R,B,N],[R,T,N],[R,T,F]],shade(color,.86));
-  polygon([[L,T,N],[L,T,F],[R,T,F],[R,T,N]],shade(color,1.08));
+  const edge=shade(color,.67);
+  polygon([[L,B,F],[R,B,F],[R,T,F],[L,T,F]],shade(color,.94),edge);
+  polygon([[R,B,F],[R,B,N],[R,T,N],[R,T,F]],shade(color,.73),edge);
+  polygon([[L,T,N],[L,T,F],[R,T,F],[R,T,N]],shade(color,1.04),edge);
  };
- const circle=(pos,r,color,depthBias=0)=>{const point=worldToScreen(pos),other=worldToScreen([pos[0]+r,pos[1],pos[2]]);if(!point||!other)return;const rad=Math.max(.8,Math.hypot(point.x-other.x,point.y-other.y));enqueue(depthOf([pos])+depthBias,()=>{c.fillStyle=color;c.beginPath();c.arc(point.x,point.y,rad,0,Math.PI*2);c.fill();});};
+ const circle=(pos,r,color,depthBias=0)=>{const point=worldToScreen(pos),other=worldToScreen([pos[0]+r,pos[1],pos[2]]);if(!point||!other)return;const rad=Math.max(.8,Math.hypot(point.x-other.x,point.y-other.y));enqueue(depthOf([pos])+depthBias,()=>{c.fillStyle=color;c.beginPath();c.arc(point.x,point.y,rad,0,Math.PI*2);c.fill();if(rad>=1.55){c.strokeStyle=shade(color,.62);c.lineWidth=Math.min(.82,Math.max(.46,rad*.075));c.stroke();}});};
  polygon([[-17,0,-19.7],[17,0,-19.7],[17,0,21],[-17,0,21]],'#ddc2a1');
  for(let x=-16.5;x<17;x+=1.12)box(x,-.03,1,1,.045,41.2,Math.floor(x)%2?'#e8cfaf':'#e3c5a0');
  polygon([[-17,0,-19.7],[17,0,-19.7],[17,6.7,-19.7],[-17,6.7,-19.7]],'#f3e5d4');
@@ -2744,7 +2749,7 @@ function createPhysicalSceneLabels(){
 }
 try{
  if(gl){prepareGL();document.body.dataset.renderer='webgl';}
- else{fallback2d=true;ctx2d=scene.getContext('2d');document.body.dataset.renderer='software-perspective';}
+ else{fallback2d=true;ctx2d=scene.getContext('2d',{alpha:false,desynchronized:true});document.body.dataset.renderer='software-perspective';}
  createLabels();createPhysicalSceneLabels();buildPatterns();buildBins();buildPalette();wire();phWireAlbum();updateDrinkStatus();updateCarryBoardStatus();updateCarryProductStatus();updateGalleryInfo();mountSoundToggle();netStart();resize();calcCamera();requestAnimationFrame(frame);
  $('seatPutDown').onclick=phPutDownTool;$('seatReturn').onclick=()=>{if(PH.held){phReturnBead();updateStatic();updateSeatHud();SFX.pick();}};$('seatDrinkAction').onclick=placeOrTakeTableDrink;$('seatBoardAction').onclick=carryBoardForIron;
  $('seatViewReset').onclick=()=>{phResetDeskView();SFX.ui();};
