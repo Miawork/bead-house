@@ -35,6 +35,7 @@ test('serves the game and persists the complete shared room', async t => {
   const homeHtml = await home.text();
   assert.match(homeHtml, /mobileSceneZoom/);
   assert.match(homeHtml, /src\/board-sync\.js/);
+  assert.match(homeHtml, /空手长按画板，可清空拼豆板/);
   assert.match(homeHtml, /id="carryCupHit"/);
   assert.doesNotMatch(homeHtml, /id="carryDrink"/);
   const boardSyncSource = await fetch(`${running.origin}/src/board-sync.js`);

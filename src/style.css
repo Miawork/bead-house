@@ -202,6 +202,9 @@
 .seat-hud-grab button{border:1px solid #cdb59a;background:#fff;color:#7b5e47;border-radius:7px;padding:5px 8px;font-size:11px;font-weight:700;cursor:pointer;min-width:30px}
 .seat-hud-grab button:hover{background:#efdfcb}
 .seat-hud-grab button.on{background:#b98559;border-color:#b98559;color:#fff}
+.seat-clear-hint{display:flex;align-items:center;gap:5px;flex:0 0 auto;padding:5px 8px;border-radius:8px;background:#f5eadb;color:#8b6d52;font-size:10px;font-weight:700;white-space:nowrap}
+.seat-clear-hint span{color:#b98559;font-size:11px}
+@media (max-width:600px){.seat-clear-hint{font-size:9px;padding:4px 7px}}
 
 /* Tabletop zone tags (seated mode) */
 #diegeticLabels{position:absolute;inset:0;pointer-events:none;z-index:6}

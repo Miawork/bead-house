@@ -1281,6 +1281,7 @@ function updateSeatHud(){
  const drinkAction=$('seatDrinkAction');if(drinkAction){drinkAction.classList.toggle('hidden',!heldDrink&&!deskDrink);drinkAction.disabled=!!heldDrink&&!!deskDrink;
   drinkAction.textContent=heldDrink?'饮料放桌上':deskDrink?'拿起桌上饮料':'饮料';}
  const boardAction=$('seatBoardAction');if(boardAction){boardAction.classList.toggle('hidden',!hasWork);boardAction.textContent=heldDrink?'先把饮料放桌上':'拿起拼好的底板';}
+ const clearHint=$('seatClearHint');if(clearHint)clearHint.classList.toggle('hidden',!hasWork);
 }
 // Tactile seat: a freshly-placed bead is skipped in the static bake and drawn in
 // the per-frame dynamic buffer so it visibly descends onto the peg, squashes and
