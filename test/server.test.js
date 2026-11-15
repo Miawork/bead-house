@@ -34,11 +34,15 @@ test('serves the game and persists the complete shared room', async t => {
   assert.equal(home.status, 200);
   const homeHtml = await home.text();
   assert.match(homeHtml, /mobileSceneZoom/);
+  assert.match(homeHtml, /src\/board-sync\.js/);
   assert.match(homeHtml, /id="carryCupHit"/);
   assert.doesNotMatch(homeHtml, /id="carryDrink"/);
+  const boardSyncSource = await fetch(`${running.origin}/src/board-sync.js`);
+  assert.equal(boardSyncSource.status, 200);
+  assert.match(await boardSyncSource.text(), /createBoardSync/);
 
   const messages = [
-    { t: 'board', id: 'p-test-user', mid: 'board-1', table: 'A', size: 16, cells: 'A'.repeat(256) },
+    { t: 'board', id: 'p-test-user', mid: 'board-1', table: 'A', size: 16, cells: 'A'.repeat(256), revision: 1 },
     { t: 'gallery:add', id: 'p-test-user', mid: 'gallery-1', item: { id: 'wish-1', author: '测试玩家', pixels: 'AAAA', wallId: 'north', wallU: 1, wallY: 3 } },
     { t: 'table:drink', id: 'p-test-user', mid: 'drink-1', table: 'A', item: { id: 'latte', sips: 5 } },
     { t: 'player:save', id: 'p-test-user', mid: 'player-1', state: { nickname: '测试玩家', hand: { board: 'A' } } }
@@ -63,6 +67,7 @@ test('serves the game and persists the complete shared room', async t => {
   t.after(() => running.app.server.listening && running.app.close());
   snapshot = await (await fetch(`${running.origin}/api/room?boards=1&gallery=1&drinks=1&player=p-test-user`)).json();
   assert.equal(snapshot.boards[0].mid, 'board-1');
+  assert.equal(snapshot.boards[0].revision, 1);
   assert.equal(snapshot.gallery.length, 0);
   assert.equal(snapshot.player.hand.product.id, 'wish-1');
 
@@ -74,6 +79,24 @@ test('serves the game and persists the complete shared room', async t => {
   assert.equal(snapshot.gallery[0].wallU, 4);
   snapshot = await (await fetch(`${running.origin}/api/room?player=p-test-user`)).json();
   assert.equal(snapshot.player.hand.product, null);
+});
+
+test('rejects stale board snapshots so placed beads cannot roll back', async t => {
+  const dataDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'bead-house-board-version-'));
+  const { app, origin } = await start(dataDir);
+  t.after(async () => {
+    await app.close();
+    await fsp.rm(dataDir, { recursive: true, force: true });
+  });
+  const latest = { t: 'board', id: 'p-board', mid: 'board-new', table: 'A', size: 16, cells: 'AA' + '.'.repeat(254), revision: 2 };
+  const stale = { t: 'board', id: 'p-board', mid: 'board-old', table: 'A', size: 16, cells: 'A' + '.'.repeat(255), revision: 1 };
+  assert.equal((await post(origin, latest)).status, 202);
+  const staleResponse = await (await post(origin, stale)).json();
+  assert.equal(staleResponse.stale, true);
+  assert.equal(staleResponse.board.revision, 2);
+  const snapshot = await (await fetch(`${origin}/api/room?boards=1`)).json();
+  assert.equal(snapshot.boards[0].revision, 2);
+  assert.equal(snapshot.boards[0].cells.slice(0, 2), 'AA');
 });
 
 test('relays live multiplayer messages through the same-origin WebSocket', async t => {

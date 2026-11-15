@@ -39,8 +39,16 @@ function normalizeStore(value) {
   const clean = emptyStore();
   if (!value || typeof value !== 'object') return clean;
   clean.legacySeeded = Boolean(value.legacySeeded);
-  for (const key of ['boards', 'gallery', 'galleryRemoved', 'drinks', 'players']) {
+  for (const key of ['gallery', 'galleryRemoved', 'drinks', 'players']) {
     if (value[key] && typeof value[key] === 'object' && !Array.isArray(value[key])) clean[key] = value[key];
+  }
+  if (value.boards && typeof value.boards === 'object' && !Array.isArray(value.boards)) {
+    for (const [table, board] of Object.entries(value.boards)) {
+      if (TABLES.includes(table) && board && typeof board === 'object') clean.boards[table] = {
+        ...board,
+        revision: Number.isSafeInteger(board.revision) && board.revision >= 0 ? board.revision : 1
+      };
+    }
   }
   return clean;
 }
@@ -89,7 +97,7 @@ function createBeadHouseServer(options = {}) {
     const cutoff = Date.now() - 120000;
     while (events.length && Number(events[0]?._roomAt || 0) < cutoff) events.shift();
     if (events.length > 240) events.splice(0, events.length - 240);
-    for (const [mid, timestamp] of seenMids) if (timestamp < cutoff) seenMids.delete(mid);
+    for (const [mid, outcome] of seenMids) if (Number(outcome?.at || 0) < cutoff) seenMids.delete(mid);
   }
 
   function appendEvent(message) {
@@ -126,7 +134,10 @@ function createBeadHouseServer(options = {}) {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const payload = await response.json();
       for (const board of payload.boards || []) {
-        if (TABLES.includes(board?.table) && !store.boards[board.table]) store.boards[board.table] = board;
+        if (TABLES.includes(board?.table) && !store.boards[board.table]) store.boards[board.table] = {
+          ...board,
+          revision: Number.isSafeInteger(board.revision) && board.revision >= 0 ? board.revision : 1
+        };
       }
       for (const item of payload.gallery || []) {
         if (typeof item?.id === 'string' && !store.gallery[item.id] && !store.galleryRemoved[item.id]) store.gallery[item.id] = item;
@@ -164,14 +175,26 @@ function createBeadHouseServer(options = {}) {
   async function acceptMessage(message) {
     if (!validMessage(message)) return { accepted: false, reason: 'invalid-message' };
     trimEvents();
-    if (seenMids.has(message.mid)) return { accepted: true, duplicate: true };
+    if (seenMids.has(message.mid)) return { accepted: true, duplicate: true, ...seenMids.get(message.mid) };
     const received = { ...message, _roomAt: Date.now() };
-    seenMids.set(message.mid, received._roomAt);
     let changed = false;
+    let stale = false;
+    let authoritative = received;
 
     if (message.t === 'board' && TABLES.includes(message.table) && typeof message.cells === 'string') {
-      store.boards[message.table] = received;
-      changed = true;
+      const current = store.boards[message.table];
+      const currentRevision = Number.isSafeInteger(current?.revision) ? current.revision : 0;
+      const proposedRevision = Number.isSafeInteger(message.revision) && message.revision >= 0
+        ? message.revision
+        : currentRevision + 1;
+      if (current && proposedRevision <= currentRevision) {
+        stale = true;
+        authoritative = current;
+      } else {
+        authoritative = { ...received, revision: proposedRevision };
+        store.boards[message.table] = authoritative;
+        changed = true;
+      }
     } else if (message.t === 'gallery:add' && message.item && typeof message.item.id === 'string') {
       if (!store.gallery[message.item.id] && !store.galleryRemoved[message.item.id]) store.gallery[message.item.id] = message.item;
       appendEvent(received);
@@ -200,8 +223,10 @@ function createBeadHouseServer(options = {}) {
       appendEvent(received);
     }
 
+    const outcome = { received: authoritative, stale, at: received._roomAt };
+    seenMids.set(message.mid, outcome);
     if (changed) await persist();
-    return { accepted: true, received };
+    return { accepted: true, ...outcome };
   }
 
   function reply(response, status, value) {
@@ -247,7 +272,12 @@ function createBeadHouseServer(options = {}) {
       const message = await readJson(request);
       const result = await acceptMessage(message);
       if (!result.accepted) return reply(response, 400, { ok: false, error: result.reason });
-      return reply(response, 202, { ok: true, durable: true, mid: message.mid });
+      return reply(response, 202, {
+        ok: true,
+        durable: true,
+        mid: message.mid,
+        ...(message.t === 'board' ? { stale: result.stale, board: result.received } : {})
+      });
     } catch (error) {
       if (error.message === 'payload-too-large') return reply(response, 413, { ok: false, error: 'payload-too-large' });
       console.error('Room message failed:', error);
@@ -306,14 +336,18 @@ function createBeadHouseServer(options = {}) {
       socket.send(JSON.stringify({ t: 'gallery:put', id: 'wish-wall-server', item, sync: true }));
     }
     socket.send(JSON.stringify({ t: 'hi', id: 'wish-wall-server' }));
-    socket.on('message', data => {
+    socket.on('message', async data => {
       if (data.byteLength > MAX_MESSAGE_BYTES) return;
       let message;
       try { message = JSON.parse(data.toString()); } catch (_error) { return; }
       if (!validMessage(message)) return;
-      acceptMessage(message).catch(error => console.error('WebSocket persistence failed:', error));
+      let result;
+      try { result = await acceptMessage(message); } catch (error) { console.error('WebSocket persistence failed:', error); return; }
+      if (!result.accepted) return;
+      const payload = JSON.stringify(result.received || message);
       for (const client of wss.clients) {
-        if (client !== socket && client.readyState === WebSocket.OPEN) client.send(data);
+        const includeSender = message.t === 'board';
+        if ((includeSender || client !== socket) && client.readyState === WebSocket.OPEN) client.send(payload);
       }
     });
   });

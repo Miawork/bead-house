@@ -123,6 +123,7 @@ function gradientRank(a,b){const A=hexToHsl(a.hex),B=hexToHsl(b.hex),na=A[1]<.12
 const COLOR_CHARS='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&*+-:;=?@^_~<>()[]{}';
 const sizeOptions=[16,29,32,48,52,58,64,78,87,96,104,116,128,156,208,256];
 const tableBoards={};
+let boardSync=null;
 let gallery=[];
 let activeTable='A',paintColor='C-06',tool='paint',undo=[],redo=[];
 let painting=false,movedStroke=false,rightErase=false,panGesture=null,strokeLast=-1;
@@ -181,8 +182,7 @@ function dropCarriedBoardBeads(){
  if(!carriedBoard)return 0;const work=tableBoards[carriedBoard],loose=[];for(let i=0;i<work.cells.length;i++)if(work.cells[i])loose.push(i);
  if(loose.length<=1)return 0;const count=Math.min(loose.length-1,1+Math.floor(Math.random()*Math.min(3,loose.length-1)));
  for(let n=0;n<count;n++){const pick=Math.floor(Math.random()*loose.length),idx=loose.splice(pick,1)[0];work.cells[idx]=null;}
- try{localStorage.setItem('bead-house.v5.table'+carriedBoard,JSON.stringify({size:work.size,pixels:packCells(work.cells)}));}catch(_e){}
- try{netSend({t:'board',table:carriedBoard,cells:packCells(work.cells),size:work.size});}catch(_e){}
+ storeBoard(carriedBoard);
  updateStatic();return count;
 }
 function updateBoardCarryMotion(dt,vx,vz,moving){
@@ -505,7 +505,7 @@ gallery=loadGallery();
 let nickname='游客小豆';try{nickname=localStorage.getItem('bead-house.v1.nickname')||nickname;}catch(_e){}$('displayName').textContent=nickname;
 function board(){return tableBoards[activeTable];}
 function current(){return board().cells;}
-function storeBoard(){const b=board();try{netSendBoard();}catch(_e){}try{localStorage.setItem('bead-house.v5.table'+activeTable,JSON.stringify({size:b.size,pixels:packCells(b.cells)}));return true;}catch(_e){toast('本地空间不足，请先导出 PNG 备份。');return false;}}
+function storeBoard(tableId=activeTable){const b=tableBoards[tableId];if(!b)return false;try{netMarkBoardChanged(tableId);}catch(_e){}try{localStorage.setItem('bead-house.v5.table'+tableId,JSON.stringify({size:b.size,pixels:packCells(b.cells)}));return true;}catch(_e){toast('本地空间不足，请先导出 PNG 备份。');return false;}}
 function storeGallery(){try{localStorage.setItem('bead-house.v2.gallery',JSON.stringify(gallery));return true;}catch(_e){toast('展示墙本地保存失败，请尝试删除较大作品。');return false;}}
 function saveNick(){try{localStorage.setItem('bead-house.v1.nickname',nickname);}catch(_e){}try{markCloudProgress();}catch(_e){}}
 // Reference images belong to each desk and are never written to the physical bead board.
@@ -1814,7 +1814,11 @@ function applyCloudPlayer(state){
  if(carriedBoard&&state.iron&&state.iron.table===carriedBoard){restoredIronState={...state.iron};ironFinished=!!state.iron.finished;ironProgressValue=Math.max(0,Math.min(1,Number(state.iron.progress)||0));selectedIronProduct=PRODUCT_META[state.iron.product]?state.iron.product:'keychain';}
  updateDrinkStatus();updateCarryBoardStatus();updateCarryProductStatus();updatePaletteQuantity();updateStatic();return true;
 }
-const NET={id:persistentPlayerId(),peers:new Map(),chan:null,ws:null,url:null,roomUrl:null,retry:null,retryMs:800,stopped:false,last:0,lastBoard:0,lastHttpState:0,lastPlayerSave:0,lastPlayerSig:'',saveTimer:null,on:false,pollTimer:null,pollBusy:false,pollCount:0,mid:0,seen:new Set(),restoring:true,restored:false,durable:false};
+const NET={id:persistentPlayerId(),peers:new Map(),chan:null,ws:null,url:null,roomUrl:null,retry:null,retryMs:800,stopped:false,last:0,lastHttpState:0,lastPlayerSave:0,lastPlayerSig:'',saveTimer:null,on:false,pollTimer:null,pollBusy:false,pollCount:0,mid:0,seen:new Set(),restoring:true,restored:false,durable:false};
+boardSync=BeadBoardSync.createBoardSync({tables:names,delay:220,now:()=>performance.now(),
+ read:tableId=>{const work=tableBoards[tableId];return work?{size:work.size,cells:packCells(work.cells)}:null;},
+ send:(tableId,snapshot)=>{if(!NET.on||!tableBoards[tableId])return false;netSend({t:'board',table:tableId,size:snapshot.size,cells:snapshot.cells,revision:snapshot.revision});return true;}
+});
 function netColor(id){let n=0;for(const c of id||'')n=(n+c.charCodeAt(0))%997;return ['#e39a93','#9fc3a6','#a9b9e0','#e6c58a','#caa7d6','#8fd0c6','#e0a878','#bdd08f'][n%8];}
 function netConnectWs(){if(!NET.url||NET.stopped)return;clearTimeout(NET.retry);try{const ws=new WebSocket(NET.url);NET.ws=ws;NET.on=true;
  ws.onopen=()=>{NET.retryMs=800;netSend({t:'hi',id:NET.id});};
@@ -1828,12 +1832,12 @@ function netStart(){
   else if('BroadcastChannel' in window){NET.chan=new BroadcastChannel('bead-house-room-v1');NET.chan.onmessage=e=>netRecv(e.data);NET.on=true;netSend({t:'hi',id:NET.id});}
   if(NET.roomUrl){NET.on=true;netPoll();netSend({t:'hi',id:NET.id});}else{NET.restoring=false;NET.restored=true;}
  }catch(_e){NET.on=false;}
- try{window.addEventListener('beforeunload',()=>{netSavePlayer(true);netSend({t:'bye',id:NET.id});NET.stopped=true;clearTimeout(NET.retry);clearTimeout(NET.pollTimer);clearTimeout(NET.saveTimer);});}catch(_e){}
+ try{window.addEventListener('beforeunload',()=>{for(const tableId of names)if(boardSync.inspect(tableId).pendingLocal)netSendBoard(true,tableId);boardSync.dispose();netSavePlayer(true);netSend({t:'bye',id:NET.id});NET.stopped=true;clearTimeout(NET.retry);clearTimeout(NET.pollTimer);clearTimeout(NET.saveTimer);});}catch(_e){}
 }
 function netRemember(mid){if(!mid)return false;if(NET.seen.has(mid))return true;NET.seen.add(mid);if(NET.seen.size>1800)NET.seen=new Set([...NET.seen].slice(-900));return false;}
 function netPost(packet){if(!NET.roomUrl)return;const now=performance.now();if(packet.t==='state'){if(now-NET.lastHttpState<420)return;NET.lastHttpState=now;}
  const retryable=['board','gallery:add','gallery:put','gallery:remove','table:drink','player:save'].includes(packet.t);
- try{fetch(NET.roomUrl,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(packet),keepalive:retryable||packet.t==='bye'}).then(response=>{if(!response.ok&&retryable&&!NET.stopped)setTimeout(()=>netPost(packet),1200);}).catch(()=>{if(retryable&&!NET.stopped)setTimeout(()=>netPost(packet),1200);});}catch(_e){}
+ try{fetch(NET.roomUrl,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(packet),keepalive:retryable||packet.t==='bye'}).then(async response=>{if(response.ok){if(packet.t==='board'){try{const data=await response.json();if(data.board)netRecv(data.board);}catch(_e){}}return;}if(retryable&&!NET.stopped)setTimeout(()=>netPost(packet),1200);}).catch(()=>{if(retryable&&!NET.stopped)setTimeout(()=>netPost(packet),1200);});}catch(_e){}
 }
 async function netPoll(){if(NET.stopped||!NET.roomUrl)return;if(NET.pollBusy){NET.pollTimer=setTimeout(netPoll,450);return;}NET.pollBusy=true;
  try{const count=NET.pollCount++,params=new URLSearchParams();if(count%3===0){params.set('boards','1');params.set('drinks','1');}if(count%24===0)params.set('gallery','1');if(!NET.restored)params.set('player',NET.id);const response=await fetch(`${NET.roomUrl}?${params}`,{cache:'no-store'});if(response.ok){const data=await response.json();for(const msg of data.events||[])if(!netRemember(msg.mid))netRecv(msg);for(const msg of data.boards||[])netRecv(msg);for(const msg of data.tableDrinks||[])netRecv(msg);if(Array.isArray(data.gallery))replaceGalleryItems(data.gallery);NET.durable=!!data.durable;if(!NET.restored){applyCloudPlayer(data.player);NET.restoring=false;NET.restored=true;NET.lastPlayerSig=JSON.stringify(cloudPlayerSnapshot());}NET.on=true;}}
@@ -1844,8 +1848,8 @@ function netRecv(msg){
  if(!msg||(msg.id===NET.id&&!['board','table:drink'].includes(msg.t)))return;
  if(msg.t==='state'){const p=NET.peers.get(msg.id)||{};Object.assign(p,msg);p.last=performance.now();NET.peers.set(msg.id,p);}
  else if(msg.t==='bye')NET.peers.delete(msg.id);
- else if(msg.t==='hi'){netBroadcastSelf(true);if(PH.active&&activeTable)netSend({t:'board',table:activeTable,cells:packCells(board().cells),size:board().size});if(!NET.roomUrl)for(const item of gallery)netSend({t:'gallery:add',id:NET.id,item,sync:true});}
- else if(msg.t==='board'&&names.includes(msg.table)&&sizeOptions.includes(msg.size)){const cells=unpackCells(msg.cells,msg.size);if(cells){tableBoards[msg.table]={size:msg.size,cells};if(PH.active&&activeTable===msg.table){try{rebuildBoardRaster();updateCount();}catch(_e){}}try{updateStatic();}catch(_e){}}}
+ else if(msg.t==='hi'){netBroadcastSelf(true);if(PH.active&&activeTable)netSendBoard(true,activeTable);if(!NET.roomUrl)for(const item of gallery)netSend({t:'gallery:add',id:NET.id,item,sync:true});}
+ else if(msg.t==='board'&&names.includes(msg.table)&&sizeOptions.includes(msg.size)){const decision=boardSync.receive(msg.table,msg);if(!decision.apply)return;const cells=unpackCells(msg.cells,msg.size);if(cells){tableBoards[msg.table]={size:msg.size,cells};try{localStorage.setItem('bead-house.v5.table'+msg.table,JSON.stringify({size:msg.size,pixels:msg.cells}));}catch(_e){}if(PH.active&&activeTable===msg.table){try{rebuildBoardRaster();updateCount();}catch(_e){}}try{updateStatic();}catch(_e){}}}
  else if(msg.t==='gallery:add'){const added=mergeGalleryItems([msg.item]);if(added&&!msg.sync)toast(`${msg.item?.author||'一位豆友'}在多人心愿墙挂上了新作品。`);}
  else if(msg.t==='gallery:put'){const changed=putGalleryItems([msg.item]);if(changed&&!msg.sync)toast(`${msg.item?.author||'一位豆友'}在${wallSurface(msg.item?.wallId).label}挂上了作品。`);}
  else if(msg.t==='gallery:remove'){const removed=removeGalleryItem(msg.itemId);if(removed&&!msg.sync)toast(`${msg.id===NET.id?'你':'一位豆友'}取下了墙上的${PRODUCT_META[removed.mount]?.label||'作品'}。`);}
@@ -1860,7 +1864,8 @@ function netBroadcastSelf(force){
 }
 function netPrune(){const now=performance.now();for(const [id,p] of NET.peers)if(now-p.last>3500)NET.peers.delete(id);}
 function netTableOwner(tableId){for(const [,p] of NET.peers)if(p.seat===tableId)return p;return null;}
-function netSendBoard(force=false,tableId=activeTable){if(!NET.on||!tableBoards[tableId])return;const now=performance.now();if(!force&&now-NET.lastBoard<220)return;NET.lastBoard=now;const work=tableBoards[tableId];netSend({t:'board',table:tableId,cells:packCells(work.cells),size:work.size});}
+function netMarkBoardChanged(tableId=activeTable){if(boardSync)boardSync.changed(tableId);}
+function netSendBoard(force=false,tableId=activeTable){if(boardSync)boardSync.flush(tableId,force);}
 // A standing ~1.8m figure facing `yaw`, for remote players.
 function addFigure(m,x,z,yaw,shirt,bob){bob=bob||0;const skin='#f3d3b2',hair='#5c4638';
  const fx=Math.sin(yaw),fz=Math.cos(yaw),rx=Math.cos(yaw),rz=-Math.sin(yaw);
