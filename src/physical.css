@@ -2,10 +2,9 @@
 .topbar,.bottom-ui,.left-notice,.scene-labels,.micro-hint,.preview-footnote,
 .gradient-bottom,.help-button {display:none!important}
 .app{background:#eaddca}
-/* Pixel-art: the low-res render buffer is upscaled nearest-neighbour into chunky pixels.
-   `pixelated` MUST be the last declaration so Chrome uses hard nearest-neighbour (not the
-   blurry `crisp-edges`); older Safari falls back to crisp-edges. */
-#scene{image-rendering:-webkit-optimize-contrast;image-rendering:crisp-edges;image-rendering:pixelated}
+/* The room now uses a native Retina backing store. Browser interpolation keeps diagonal
+   furniture/iPad edges stable instead of magnifying low-resolution stair steps. */
+#scene{image-rendering:auto}
 /* Standalone sound switch — the topbar (and its toggle) is hidden in this immersive view. */
 .floating-sound{position:absolute;right:19px;top:19px;z-index:14;border:0;border-radius:50%;
  width:43px;height:43px;background:#fff8edc9;box-shadow:0 3px 16px #52412b30;backdrop-filter:blur(8px);

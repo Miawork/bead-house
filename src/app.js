@@ -134,11 +134,11 @@ const camera={angle:Math.PI,pitch:.94,distance:33,lookX:0,lookZ:0,aTarget:Math.P
 let firstPerson=true;   // roam the shop in first person (eye-level); seated/wall views keep their own camera
 let fpSavedYaw=Math.PI; // remember first-person facing across sitting at a table
 const layout={width:1,height:1,aspect:1};
-// Pixel size in whole DEVICE pixels per render pixel. Integer → every pixel upscales to a
-// uniform N×N block (no "tilted/blurry" uneven pixels). Smaller = sharper/higher clarity.
-const PIXEL_DIV=1.0;
-try{scene.style.imageRendering='pixelated';}catch(_e){} // guarantee crisp nearest-neighbour upscale (not blurry)
-let renderScale=1;      // low-res buffer px per CSS px, shared by the 2D fallback
+// Render the room at native Retina resolution (capped at 2× for predictable performance).
+// The old half-resolution/pixelated buffer blurred wall art and made diagonal iPad edges crawl.
+const MAX_RENDER_DPR=2;
+try{scene.style.imageRendering='auto';}catch(_e){}
+let renderScale=1;      // backing-buffer px per CSS px, shared by the 2D fallback
 let last=performance.now(),firstFrame=false,glStatic=null,glPlayer=null,staticVertexCount=0;
 let drawMatrix=null,camPos=[0,0,0],camForward=[0,0,0],camRight=[0,0,0],camUp=[0,0,0];
 let fallback2d=false,ctx2d=null,lastFallbackPaint=0;
@@ -643,14 +643,16 @@ const PH = {active:false, table:null, bin:null, held:null, pointer:null, cursor:
 const PH_BIN_COLS=4, PH_BIN_ROWS=6;
 const PH_STORAGE_KEY='bead-house.v7.physical';
 const PH_SIZES=[29,32,52,64,128];
-// Bigger physical boards on a bigger tabletop, so even the large 128 board reads clearly
-// (the 256 board was dropped — its cells were too small to see).
-const PH_BOARD_WIDTHS={29:1.15,32:1.30,52:1.50,64:1.64,128:1.80};
+// Golden-ratio desk: the 3.2-deep top is 3.2×φ wide, and the main 32 board is
+// 3.2/φ wide. This makes the pegboard the 61.8% visual anchor instead of a small prop.
+const PHI=(1+Math.sqrt(5))/2,PH_GOLDEN_MAJOR=1/PHI;
+const PH_DESK_DEPTH=3.2,PH_DESK_WIDTH=PH_DESK_DEPTH*PHI;
+const PH_BOARD_WIDTHS={29:1.84,32:PH_DESK_DEPTH/PHI,52:2.08,64:2.18,128:2.30};
 const PH_BOARD_CHOICES=[.090,.104,.130,.152,.178];
 function phTable(){return positions.find(t=>t.id===activeTable)||positions[0];}
 // Full-palette organiser: a dense grid of small colour wells on the right of the table.
 const BIN_COLS=10;
-function phBinPos(i){const t=phTable();return {x:t.x+.86+(i%BIN_COLS)*.105,z:t.z-.80+Math.floor(i/BIN_COLS)*.12,y:1.35};}
+function phBinPos(i){const t=phTable();return {x:t.x+.98+(i%BIN_COLS)*.112,z:t.z-1.00+Math.floor(i/BIN_COLS)*.13,y:1.35};}
 // Bead-wall drawer grid: 8 columns × 6 rows = 48 colours. One helper feeds the
 // static mesh, the open-drawer highlight, the hit-test and the 2D fallback.
 const WALL_COLS=8,WALL_ROWS=Math.ceil(swatches.length/WALL_COLS);
@@ -664,29 +666,27 @@ function phComputeTableColors(){PH.tableColors=swatches.slice().sort(gradientRan
 // Stock every colour at the table when you sit down (a fresh room); restock at the wall when one runs low.
 function phStockTable(){swatches.forEach(s=>{if((tray[s.id]||0)<=0)tray[s.id]=250;});}
 function phBinColor(i){return PH.tableColors[i]||swatches[i]||swatches[0];}
-function phBoardBounds(){const t=phTable(),w=PH_BOARD_WIDTHS[board().size]||1.5;return {cx:t.x-.20,cz:t.z-.52,w,h:w,top:1.278};}
-// A nearly vertical, straight-on desk view. The whole active work strip remains usable on
-// desktop, while narrow screens pull back only as much as the current pegboard requires.
+function phBoardBounds(){const t=phTable(),w=PH_BOARD_WIDTHS[board().size]||PH_BOARD_WIDTHS[32];return {cx:t.x-.18,cz:t.z-.47,w,h:w,top:1.278};}
+// A straight-on view whose main board occupies the golden 61.8% share on wide screens.
+// Narrow screens derive the vertical share from their aspect ratio so the square still fits.
 function phDefaultCameraDistance(){
- const b=phBoardBounds(),limitingShare=Math.min(.70,Math.max(.30,layout.aspect*.82));
+ const b=phBoardBounds(),limitingShare=Math.min(PH_GOLDEN_MAJOR,Math.max(.34,layout.aspect*.86));
  const boardFit=b.w/(2*Math.tan(Math.PI/8)*limitingShare);
- return Math.max(3.35,Math.min(7.2,boardFit));
+ return Math.max(3.55,Math.min(7.6,boardFit));
 }
 function phResetDeskView(){
  if(!PH.active)return;const t=phTable(),narrow=layout.aspect<.72;
- PH.orbitX=narrow?-.20:.05;PH.orbitZ=-.12;PH.cameraDistance=phDefaultCameraDistance();PH.viewAuto=true;
+ PH.orbitX=narrow?-.18:0;PH.orbitZ=-.10;PH.cameraDistance=phDefaultCameraDistance();PH.viewAuto=true;
  camera.aTarget=0;camera.pTarget=1.535;camera.lookX=t.x+PH.orbitX;camera.lookZ=t.z+PH.orbitZ;
 }
 const PH_MIN_CAMERA_DISTANCE=2.75,PH_MAX_CAMERA_DISTANCE=11;
 function phClampCameraDistance(value){return Math.max(PH_MIN_CAMERA_DISTANCE,Math.min(PH_MAX_CAMERA_DISTANCE,value));}
-function phDrawerBounds(){const t=phTable();return {cx:t.x+.99,cz:t.z+1.145,w:.97,h:.30};}
-function phLoaderBounds(){const t=phTable();return {cx:t.x+.34,cz:t.z+.60,w:.36,h:.33};}
-// Keep the pen between the board and colour organiser. Its old foreground position sat
-// directly behind the seated HUD, so even the WebGL model looked absent on the website.
-function phPenRest(){const t=phTable();return {x:t.x+.64,z:t.z+.48};}
-function phBoardChoicePos(j){const t=phTable();return {x:t.x+.70+(j%3)*.27,z:t.z+1.055+Math.floor(j/3)*.165};}
-function phTrayBounds(){const t=phTable();return {cx:t.x-.54,cz:t.z+.73,w:1.03,h:.51,top:1.33};}
-function phTweezersRest(){const t=phTable();return {x:t.x-1.22,z:t.z+.79};}
+function phDrawerBounds(){const t=phTable();return {cx:t.x+1.55,cz:t.z+1.15,w:1.05,h:.30};}
+function phLoaderBounds(){const t=phTable();return {cx:t.x+.55,cz:t.z+.72,w:.36,h:.33};}
+function phPenRest(){const t=phTable();return {x:t.x+.92,z:t.z+.64};}
+function phBoardChoicePos(j){const t=phTable();return {x:t.x+1.24+(j%3)*.29,z:t.z+1.055+Math.floor(j/3)*.165};}
+function phTrayBounds(){const t=phTable();return {cx:t.x-.42,cz:t.z+.91,w:1.36,h:.52,top:1.33};}
+function phTweezersRest(){const t=phTable();return {x:t.x-1.58,z:t.z+.88};}
 function phIsIn(x,z,r,b){return Math.abs(x-b.cx)<=b.w/2+r && Math.abs(z-b.cz)<=b.h/2+r;}
 function phOnBoard(x,z){if(!PH.boardOut||PH.boardAnimating>0)return false;const b=phBoardBounds();return Math.abs(x-b.cx)<b.w/2 && Math.abs(z-b.cz)<b.h/2;}
 function phBoardIndex(x,z){const b=phBoardBounds(),n=board().size;
@@ -883,12 +883,12 @@ function phEngraveWall(m,text,cx,cy,z,w,h){
   }
  }
 }
-function phReferencePlane(){const t=phTable();return {x:t.x-1.28,z:t.z-.39,w:.66,h:.92,y:1.454};}
+function phReferencePlane(){const t=phTable();return {x:t.x-1.72,z:t.z-.42,w:.78,h:1.10,y:1.424};}
 function phCreateStatic(m){
  if(!PH.active)return;const t=phTable(),b=phBoardBounds(),tr=phTrayBounds();
- // Larger, close-up wooden tabletop in the same 3D studio, fitted over the actual table.
- m.box(t.x,1.115,t.z,4.0,.20,3.2,'#b9835d');m.box(t.x,1.237,t.z,3.9,.047,3.1,'#e7c4a1');
- if(tableDrinks[activeTable])addDrinkCup(m,t.x-1.55,1.42,t.z-.91,tableDrinks[activeTable],1.05);
+ // 1:φ close-up wooden tabletop, fitted over the actual table while the player is seated.
+ m.box(t.x,1.115,t.z,PH_DESK_WIDTH,.20,PH_DESK_DEPTH,'#b9835d');m.box(t.x,1.237,t.z,PH_DESK_WIDTH-.10,.047,PH_DESK_DEPTH-.10,'#e7c4a1');
+ if(tableDrinks[activeTable])addDrinkCup(m,t.x-2.26,1.42,t.z-1.10,tableDrinks[activeTable],1.05);
  // The pegboard starts inside the side-board drawer; it only occupies the work surface after taking it out.
  if(PH.boardOut && PH.boardAnimating<=0){
   m.box(b.cx,1.277,b.cz,b.w+.078,.053,b.h+.078,'#8faaa7');m.box(b.cx,1.309,b.cz,b.w+.032,.022,b.h+.032,'#faf8f2');
@@ -925,8 +925,8 @@ function phCreateStatic(m){
  // so the whole palette is on the table at a glance; tap a well to grab that colour.
  if(PH.tableColors.length){
    const cols=Math.min(BIN_COLS,PH.tableColors.length),rows=Math.ceil(PH.tableColors.length/BIN_COLS);
-   const p0=phBinPos(0),cx=p0.x+(cols-1)*.105/2,cz=p0.z+(rows-1)*.12/2;
-   m.box(cx,1.3,cz,cols*.105+.05,.028,rows*.12+.05,'#b89a74');     // wooden case base
+   const p0=phBinPos(0),cx=p0.x+(cols-1)*.112/2,cz=p0.z+(rows-1)*.13/2;
+   m.box(cx,1.3,cz,cols*.112+.05,.028,rows*.13+.05,'#b89a74');     // wooden case base
  }
  for(let i=0;i<PH.tableColors.length;i++){
    if(PH.bin?.index===i)continue;const p=phBinPos(i),c=phBinColor(i),col=glHex(c.id);
@@ -970,13 +970,18 @@ function phCreateStatic(m){
  }else{
   for(let j=0;j<3;j++)m.box(rack.cx-.25+j*.25,1.321,rack.cz-.02,.16,.016,.18,'#f9f1e2');
  }
- // iPad display: solid black bezel, glass screen, camera lens and a home indicator.
+ // iPad display: the screen sits inside four real bezel rails. There are no stacked,
+ // near-coplanar full-size plates, eliminating the edge shimmer seen on iPad/WebKit.
  const screen=phReferencePlane();
- m.box(screen.x,1.326,screen.z,screen.w+.105,.15,screen.h+.105,'#434748');
- m.box(screen.x,1.417,screen.z,screen.w+.05,.023,screen.h+.05,'#111f24');
- m.box(screen.x,1.437,screen.z,screen.w,.008,screen.h,'#f2f4ed');
- m.box(screen.x,1.449,screen.z+screen.h*.515,.16,.008,.012,'#a1b3b2');
- m.box(screen.x,1.449,screen.z-screen.h*.527,.025,.009,.025,'#667879');
+ const bezel=.058,outerW=screen.w+bezel*2,outerH=screen.h+bezel*2;
+ m.box(screen.x,1.326,screen.z,outerW,.13,outerH,'#434748');
+ m.box(screen.x,1.411,screen.z,screen.w,.022,screen.h,'#f2f4ed');
+ m.box(screen.x-outerW/2+bezel/2,1.421,screen.z,bezel,.044,outerH,'#111f24');
+ m.box(screen.x+outerW/2-bezel/2,1.421,screen.z,bezel,.044,outerH,'#111f24');
+ m.box(screen.x,1.421,screen.z-outerH/2+bezel/2,screen.w,.044,bezel,'#111f24');
+ m.box(screen.x,1.421,screen.z+outerH/2-bezel/2,screen.w,.044,bezel,'#111f24');
+ m.box(screen.x,1.445,screen.z+outerH/2-bezel*.53,.17,.014,.018,'#a1b3b2');
+ m.box(screen.x,1.445,screen.z-outerH/2+bezel*.53,.032,.015,.032,'#667879');
 }
 const PH_IMAGE_CACHE=new Map();
 function phImageColors(src){if(PH_IMAGE_CACHE.has(src))return PH_IMAGE_CACHE.get(src);
@@ -1021,8 +1026,8 @@ function phRenderLabels(){const root=$('diegeticLabels');if(root?.childElementCo
 function phRenderWallLabels(){const root=$('diegeticLabels');if(root?.childElementCount)root.replaceChildren();}
 function phDrawFallback(box,circle,enqueue){
  if(!PH.active)return;const t=phTable(),b=phBoardBounds(),tr=phTrayBounds();
- box(t.x,1.22,t.z,3.9,.09,3.1,'#ddba96');
- if(tableDrinks[activeTable]){const d=drinkById(tableDrinks[activeTable].id);box(t.x-1.55,1.42,t.z-.91,.25,.30,.25,d.cup||'#f4eee4');circle([t.x-1.55,1.59,t.z-.91],.10,d.drink);}
+ box(t.x,1.22,t.z,PH_DESK_WIDTH-.10,.09,PH_DESK_DEPTH-.10,'#ddba96');
+ if(tableDrinks[activeTable]){const d=drinkById(tableDrinks[activeTable].id);box(t.x-2.26,1.42,t.z-1.10,.25,.30,.25,d.cup||'#f4eee4');circle([t.x-2.26,1.59,t.z-1.10],.10,d.drink);}
  if(PH.boardOut && PH.boardAnimating<=0){
   // Match the WebGL board stack exactly: frame below, pale surface at y=1.320,
   // then holes at y=1.323. The old fallback frame was taller than the holes.
@@ -1052,7 +1057,10 @@ function phDrawFallback(box,circle,enqueue){
    box(q.x,1.343,q.z,sizeFactor,.03,sizeFactor,'#fcf8e9');}}
  else for(let j=0;j<3;j++)box(rack.cx-.25+j*.25,1.31,rack.cz-.02,.16,.015,.17,'#f8f3e7');
  if(PH.boardAnimating>0){const d=phDrawerBounds(),b=phBoardBounds(),f=1-PH.boardAnimating/.68;box(d.cx+(b.cx-d.cx)*f,1.35,d.cz+(b.cz-d.cz)*f,b.w+.035,.055,b.h+.035,'#eee5d8');}
- const r=phReferencePlane();box(r.x,1.37,r.z,r.w+.11,.12,r.h+.11,'#394449');box(r.x,1.424,r.z,r.w,.012,r.h,'#edf2ed');
+ const r=phReferencePlane(),bz=.058,ow=r.w+bz*2,oh=r.h+bz*2;
+ box(r.x,1.326,r.z,ow,.13,oh,'#394449');box(r.x,1.411,r.z,r.w,.022,r.h,'#edf2ed');
+ box(r.x-ow/2+bz/2,1.421,r.z,bz,.044,oh,'#111f24');box(r.x+ow/2-bz/2,1.421,r.z,bz,.044,oh,'#111f24');
+ box(r.x,1.421,r.z-oh/2+bz/2,r.w,.044,bz,'#111f24');box(r.x,1.421,r.z+oh/2-bz/2,r.w,.044,bz,'#111f24');
  phDrawFallbackReference(enqueue);
 }
 // Reference stays on a physical board and can be swapped without touching any beads.
@@ -1062,10 +1070,10 @@ let phReferenceProgram=null,phReferenceBuffer=null,phReferenceAttrib=null;
 function phReferenceImage(){
  const ref=referenceByTable[activeTable];if(!ref){
   const key='ipad-home';if(PH_REF_IMAGES.has(key))return PH_REF_IMAGES.get(key);
-  const cv=document.createElement('canvas');cv.width=320;cv.height=400;const g=cv.getContext('2d');
-  g.fillStyle='#f3f5f1';g.fillRect(0,0,320,400);g.fillStyle='#e1e5e2';g.fillRect(16,18,288,16);
-  for(let j=0;j<6;j++){const im=samplePreview(j),x=18+(j%2)*151,y=48+Math.floor(j/2)*112;
-   g.fillStyle='#ffffff';g.fillRect(x-2,y-2,137,102);g.imageSmoothingEnabled=false;g.drawImage(im,x+20,y,94,94);}
+  const cv=document.createElement('canvas');cv.width=624;cv.height=880;const g=cv.getContext('2d');
+  g.fillStyle='#f3f5f1';g.fillRect(0,0,cv.width,cv.height);g.fillStyle='#dfe5e2';g.fillRect(32,28,560,24);
+  for(let j=0;j<6;j++){const im=samplePreview(j),x=32+(j%2)*292,y=82+Math.floor(j/2)*258;
+   g.fillStyle='#ffffff';g.fillRect(x,y,268,232);g.imageSmoothingEnabled=false;g.drawImage(im,x+24,y+6,220,220);}
   const entry={key,image:cv,texture:null,ready:true};PH_REF_IMAGES.set(key,entry);return entry;
  }
  const key=ref.kind==='template'?'template:'+ref.sample:'upload:'+ref.data;
@@ -1347,7 +1355,7 @@ function phMovePointer(e,px,py){
    PH.pointer.px=px;PH.pointer.py=py;return;
  }
  if(PH.bin){
-   const t=phTable(),x=Math.max(t.x-1.25,Math.min(t.x+1.3,p.x)),z=Math.max(t.z-.97,Math.min(t.z+1,p.z));
+   const t=phTable(),x=Math.max(t.x-PH_DESK_WIDTH/2+.18,Math.min(t.x+PH_DESK_WIDTH/2-.18,p.x)),z=Math.max(t.z-PH_DESK_DEPTH/2+.18,Math.min(t.z+PH_DESK_DEPTH/2-.18,p.z));
    // Held above the pegboard: the box collides with the table boundaries,
    // not with pegs below its lifting height. On release it must land in the tray.
    PH.bin.x=x;PH.bin.z=z;
@@ -1977,11 +1985,10 @@ function updateStatic(){if(!gl)return;const m=buildStatic();gl.bindBuffer(gl.ARR
 function drawMesh(buffer,count){gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.vertexAttribPointer(loc.p,3,gl.FLOAT,false,36,0);gl.vertexAttribPointer(loc.n,3,gl.FLOAT,false,36,12);gl.vertexAttribPointer(loc.c,3,gl.FLOAT,false,36,24);gl.enableVertexAttribArray(loc.p);gl.enableVertexAttribArray(loc.n);gl.enableVertexAttribArray(loc.c);gl.drawArrays(gl.TRIANGLES,0,count);}
 function resize(){const oldAspect=layout.aspect;layout.width=scene.clientWidth;layout.height=scene.clientHeight;layout.aspect=layout.width/Math.max(1,layout.height);
  if(PH.active&&PH.viewAuto&&Math.abs(layout.aspect-oldAspect)>.02)phResetDeskView();
- // Crisp pixel art via INTEGER scaling: render at (device resolution ÷ N), N a whole number of
- // device pixels per render pixel, then CSS upscales ×N nearest-neighbour. A fractional factor
- // is what makes pixels look uneven/tilted/blurry, so we round N to an integer.
- const dpr=devicePixelRatio||1,N=Math.max(2,Math.round(PIXEL_DIV*dpr));
- const w=Math.max(1,Math.round(layout.width*dpr/N)),h=Math.max(1,Math.round(layout.height*dpr/N));
+ // Native high-DPI backing store: wall images remain legible and diagonal model edges stay
+ // temporally stable while the camera settles. Cap at 2× to avoid excessive mobile GPU load.
+ const dpr=Math.min(MAX_RENDER_DPR,devicePixelRatio||1);
+ const w=Math.max(1,Math.round(layout.width*dpr)),h=Math.max(1,Math.round(layout.height*dpr));
  renderScale=w/Math.max(1,layout.width);
  if(scene.width!==w||scene.height!==h){scene.width=w;scene.height=h;if(gl)gl.viewport(0,0,w,h);}}
 function spatialInfo(kind,t){
