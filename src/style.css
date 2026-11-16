@@ -204,7 +204,11 @@
 .seat-hud-grab button.on{background:#b98559;border-color:#b98559;color:#fff}
 .seat-clear-hint{display:flex;align-items:center;gap:5px;flex:0 0 auto;padding:5px 8px;border-radius:8px;background:#f5eadb;color:#8b6d52;font-size:10px;font-weight:700;white-space:nowrap}
 .seat-clear-hint span{color:#b98559;font-size:11px}
+.seat-collab-hint{background:#e8f1e8;color:#58745e}.seat-collab-hint span{color:#719078}
 @media (max-width:600px){.seat-clear-hint{font-size:9px;padding:4px 7px}}
+.collab-callout{position:absolute;z-index:7;transform:translate(-50%,-100%);display:none;align-items:center;gap:7px;padding:9px 13px;border:1px solid #9db89f;border-radius:12px;background:#eff8e9ed;color:#4f6f55;box-shadow:0 7px 22px #34543a2b;backdrop-filter:blur(8px);font-size:12px;font-weight:800;white-space:nowrap}
+.collab-callout span{color:#7fa184;font-size:15px}.collab-callout:hover{background:#fff;transform:translate(-50%,-105%)}
+.desk-focused .collab-callout,.wall-focused .collab-callout{display:none!important}
 
 /* Tabletop zone tags (seated mode) */
 #diegeticLabels{position:absolute;inset:0;pointer-events:none;z-index:6}

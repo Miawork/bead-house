@@ -13,8 +13,10 @@ const path = require('node:path');
 const { WebSocketServer, WebSocket } = require('ws');
 
 const ROOT = __dirname;
-const TABLES = Array.from({ length: 12 }, (_, index) => String.fromCharCode(65 + index));
-const ALLOWED_TYPES = new Set(['hi', 'bye', 'state', 'board', 'gallery:add', 'gallery:put', 'gallery:remove', 'table:drink', 'player:save']);
+const COLLAB_TABLE = 'M';
+const TABLES = [...Array.from({ length: 12 }, (_, index) => String.fromCharCode(65 + index)), COLLAB_TABLE];
+const ALLOWED_TYPES = new Set(['hi', 'bye', 'state', 'board', 'board:patch', 'gallery:add', 'gallery:put', 'gallery:remove', 'table:drink', 'player:save']);
+const CELL_CHARS = '.ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&*+-:;=?@^_~<>()[]{}';
 const MAX_MESSAGE_BYTES = 128 * 1024;
 const DEFAULT_LEGACY_ROOM_URL = 'https://bead-house-stage2-1-preview.vercel.app/api/room';
 const MIME = {
@@ -180,7 +182,11 @@ function createBeadHouseServer(options = {}) {
     let changed = false;
     let stale = false;
     let authoritative = received;
+    let authoritativeBoard = null;
 
+    if (message.t === 'board' && message.table === COLLAB_TABLE) {
+      return { accepted: false, reason: 'collab-board-requires-patches' };
+    }
     if (message.t === 'board' && TABLES.includes(message.table) && typeof message.cells === 'string') {
       const current = store.boards[message.table];
       const currentRevision = Number.isSafeInteger(current?.revision) ? current.revision : 0;
@@ -195,6 +201,29 @@ function createBeadHouseServer(options = {}) {
         store.boards[message.table] = authoritative;
         changed = true;
       }
+      authoritativeBoard = authoritative;
+    } else if (message.t === 'board:patch' && message.table === COLLAB_TABLE && message.size === 64 &&
+      Array.isArray(message.changes) && message.changes.length > 0 && message.changes.length <= 1024) {
+      const current = store.boards[COLLAB_TABLE];
+      const source = current?.size === 64 && typeof current.cells === 'string' && current.cells.length === 64 * 64
+        ? current.cells
+        : '.'.repeat(64 * 64);
+      const cells = source.split('');
+      const validChanges = [];
+      for (const change of message.changes) {
+        const index = change?.[0], value = change?.[1];
+        if (!Number.isInteger(index) || index < 0 || index >= cells.length || typeof value !== 'string' ||
+          value.length !== 1 || !CELL_CHARS.includes(value)) continue;
+        cells[index] = value;
+        validChanges.push([index, value]);
+      }
+      if (!validChanges.length) return { accepted: false, reason: 'invalid-board-patch' };
+      const revision = (Number.isSafeInteger(current?.revision) ? current.revision : 0) + 1;
+      authoritative = { ...received, changes: validChanges, revision };
+      authoritativeBoard = { t: 'board', id: message.id, mid: message.mid, table: COLLAB_TABLE, size: 64,
+        cells: cells.join(''), revision, _roomAt: received._roomAt };
+      store.boards[COLLAB_TABLE] = authoritativeBoard;
+      changed = true;
     } else if (message.t === 'gallery:add' && message.item && typeof message.item.id === 'string') {
       if (!store.gallery[message.item.id] && !store.galleryRemoved[message.item.id]) store.gallery[message.item.id] = message.item;
       appendEvent(received);
@@ -223,7 +252,7 @@ function createBeadHouseServer(options = {}) {
       appendEvent(received);
     }
 
-    const outcome = { received: authoritative, stale, at: received._roomAt };
+    const outcome = { received: authoritative, board: authoritativeBoard, stale, at: received._roomAt };
     seenMids.set(message.mid, outcome);
     if (changed) await persist();
     return { accepted: true, ...outcome };
@@ -276,7 +305,7 @@ function createBeadHouseServer(options = {}) {
         ok: true,
         durable: true,
         mid: message.mid,
-        ...(message.t === 'board' ? { stale: result.stale, board: result.received } : {})
+        ...(['board', 'board:patch'].includes(message.t) ? { stale: result.stale, board: result.board || result.received } : {})
       });
     } catch (error) {
       if (error.message === 'payload-too-large') return reply(response, 413, { ok: false, error: 'payload-too-large' });
@@ -346,7 +375,7 @@ function createBeadHouseServer(options = {}) {
       if (!result.accepted) return;
       const payload = JSON.stringify(result.received || message);
       for (const client of wss.clients) {
-        const includeSender = message.t === 'board';
+        const includeSender = message.t === 'board' || message.t === 'board:patch';
         if ((includeSender || client !== socket) && client.readyState === WebSocket.OPEN) client.send(payload);
       }
     });

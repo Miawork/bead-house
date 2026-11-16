@@ -59,12 +59,15 @@ const GL_OPTIONS={antialias:true,alpha:false,preserveDrawingBuffer:false,powerPr
 const gl=scene.getContext('webgl',GL_OPTIONS)||scene.getContext('experimental-webgl',GL_OPTIONS);
 const ROOM = { minX:-16.4, maxX:16.4, minZ:-18.3, maxZ:20.4 };
 const names = Array.from({length:12},(_,i)=>String.fromCharCode(65+i));
+const COLLAB_ID='M';
 // Craft nooks, L-shaped groups and shared worktables are scattered naturally like a real handmade shop.
 const positions=[[-10.05,-10.00],[-7.06,-9.60],[-9.54,-6.78],[-6.38,-6.46],
  [-2.60,-5.52],[0.39,-4.96],[-1.84,-2.26],
  [3.82,-4.38],[6.83,-3.92],[5.18,-.78],
  [2.03,4.51],[5.03,4.86]]
  .map(([x,z],i)=>({id:names[i],x,z}));
+const COLLAB_TABLE={id:COLLAB_ID,x:3.75,z:10.75,w:6.25,d:4.15,collab:true};
+const workTables=[...positions,COLLAB_TABLE],boardIds=[...names,COLLAB_ID];
 // finish: solid 实色 · jelly 透明果冻 · glow 夜光 · metal 金属珠光 · glitter 闪粉
 // NOTE: the first 24 entries must stay in order — saved boards/gallery reference them by index.
 const baseSwatches = [
@@ -208,7 +211,7 @@ function updateCarryProductStatus(){const tag=$('carryProduct');if(!tag)return;t
  if(carriedProduct)$('carryProductName').textContent=`${PRODUCT_META[carriedProduct.mount]?.label||'拼豆成品'} · ${carriedProduct.name}`;
  const wallLabel=document.querySelector('.wall-label');if(wallLabel){const text=wallLabel.querySelector('span:last-child');if(text)text.textContent=carriedProduct?'挂上':'赏画';wallLabel.setAttribute('aria-label',carriedProduct?'把手里的成品挂到任意墙面':'赏画');}}
 function drinkSnapshot(){return heldDrink?{id:heldDrink,opt:{...(heldOpt||{})},sips:coffeeSips,source:heldDrinkSource}:null;}
-function syncTableDrink(table){if(!names.includes(table))return;netSend({t:'table:drink',table,item:tableDrinks[table]?{...tableDrinks[table],opt:{...(tableDrinks[table].opt||{})}}:null});markCloudProgress();}
+function syncTableDrink(table){if(!boardIds.includes(table))return;netSend({t:'table:drink',table,item:tableDrinks[table]?{...tableDrinks[table],opt:{...(tableDrinks[table].opt||{})}}:null});markCloudProgress();}
 function addDrinkCup(m,x,y,z,item,scale=1){if(!item)return;const d=drinkById(item.id),o=item.opt||{},cup=d.cup||'#f4eee4';
  m.box(x,y,z,.24*scale,.28*scale,.24*scale,cup);m.box(x,y+.15*scale,z,.27*scale,.035*scale,.27*scale,'#fff9ed');m.box(x,y+.17*scale,z,.20*scale,.018*scale,.20*scale,d.drink);
  if((o.whip)||(d.foam&&o.milk))m.box(x,y+.205*scale,z,.18*scale,.045*scale,.18*scale,d.foam||'#fff7ee');
@@ -382,8 +385,8 @@ let pickupAt='wall',pickupReturn='studio',pickupTable='A',referenceVisible=false
 const referenceByTable={};const referenceCanvases={};
 const TRAY_MAX=2400, BIN_MAX=2400, RACK_STOCK_MAX=20000;
 let rackStock=Object.fromEntries(swatches.map(c=>[c.id,RACK_STOCK_MAX]));
-const tableStock=Object.fromEntries(names.map(id=>[id,Object.fromEntries(swatches.map(c=>[c.id,180]))]));
-try {const saved=JSON.parse(localStorage.getItem('bead-house.v5.table-stock')); if(saved&&typeof saved==='object')for(const id of names)for(const c of swatches){const amount=saved[id]?.[c.id];if(Number.isFinite(amount))tableStock[id][c.id]=Math.max(0,Math.min(500,Math.floor(amount)));}}catch(_e){}
+const tableStock=Object.fromEntries(boardIds.map(id=>[id,Object.fromEntries(swatches.map(c=>[c.id,180]))]));
+try {const saved=JSON.parse(localStorage.getItem('bead-house.v5.table-stock')); if(saved&&typeof saved==='object')for(const id of boardIds)for(const c of swatches){const amount=saved[id]?.[c.id];if(Number.isFinite(amount))tableStock[id][c.id]=Math.max(0,Math.min(500,Math.floor(amount)));}}catch(_e){}
 function persistTableStock(){try{localStorage.setItem('bead-house.v5.table-stock',JSON.stringify(tableStock));}catch(_e){toast('桌边豆盒库存暂时无法保存。');}try{markCloudProgress();}catch(_e){}}
 function sourceStock(){return pickupAt==='table'?tableStock[pickupTable]:rackStock;}
 function persistSourceStock(){if(pickupAt==='table')persistTableStock();else persistRack();}
@@ -464,6 +467,11 @@ function loadProject(id,index){
  return{size:32,cells:Array(1024).fill(null)};
 }
 for(let i=0;i<names.length;i++)tableBoards[names[i]]=loadProject(names[i],i);
+tableBoards[COLLAB_ID]={size:64,cells:Array(64*64).fill(null)};
+let collabShadow=packCells(tableBoards[COLLAB_ID].cells),collabRevision=0;
+const collabPendingCells=new Map();
+const collabQueuedCells=new Map();
+let collabFlushTimer=null;
 function galleryHash(value){let h=2166136261;for(let i=0;i<value.length;i++){h^=value.charCodeAt(i);h=Math.imul(h,16777619);}return(h>>>0).toString(36);}
 function galleryClamp(value,min,max,fallback){const n=Number(value);return Number.isFinite(n)?Math.max(min,Math.min(max,n)):fallback;}
 const WALL_SURFACES=[
@@ -505,12 +513,12 @@ gallery=loadGallery();
 let nickname='游客小豆';try{nickname=localStorage.getItem('bead-house.v1.nickname')||nickname;}catch(_e){}$('displayName').textContent=nickname;
 function board(){return tableBoards[activeTable];}
 function current(){return board().cells;}
-function storeBoard(tableId=activeTable){const b=tableBoards[tableId];if(!b)return false;try{netMarkBoardChanged(tableId);}catch(_e){}try{localStorage.setItem('bead-house.v5.table'+tableId,JSON.stringify({size:b.size,pixels:packCells(b.cells)}));return true;}catch(_e){toast('本地空间不足，请先导出 PNG 备份。');return false;}}
+function storeBoard(tableId=activeTable){const b=tableBoards[tableId];if(!b)return false;const pixels=packCells(b.cells);try{if(tableId===COLLAB_ID)netSendCollabChanges(pixels);else netMarkBoardChanged(tableId);}catch(_e){}try{localStorage.setItem('bead-house.v5.table'+tableId,JSON.stringify({size:b.size,pixels}));return true;}catch(_e){toast('本地空间不足，请先导出 PNG 备份。');return false;}}
 function storeGallery(){try{localStorage.setItem('bead-house.v2.gallery',JSON.stringify(gallery));return true;}catch(_e){toast('展示墙本地保存失败，请尝试删除较大作品。');return false;}}
 function saveNick(){try{localStorage.setItem('bead-house.v1.nickname',nickname);}catch(_e){}try{markCloudProgress();}catch(_e){}}
 // Reference images belong to each desk and are never written to the physical bead board.
 function persistReference(id){const ref=referenceByTable[id];try{if(ref)localStorage.setItem('bead-house.v5.reference.'+id,JSON.stringify(ref));else localStorage.removeItem('bead-house.v5.reference.'+id);return true;}catch(_e){toast('图片已加载，但浏览器存储空间不足；刷新可能丢失参考图。');return false;}}
-for(const id of names){try{const v=JSON.parse(localStorage.getItem('bead-house.v5.reference.'+id));if(v&&(v.kind==='template'||(v.kind==='upload'&&typeof v.data==='string'&&v.data.startsWith('data:image/'))))referenceByTable[id]=v;}catch(_e){}}
+for(const id of boardIds){try{const v=JSON.parse(localStorage.getItem('bead-house.v5.reference.'+id));if(v&&(v.kind==='template'||(v.kind==='upload'&&typeof v.data==='string'&&v.data.startsWith('data:image/'))))referenceByTable[id]=v;}catch(_e){}}
 const patterns=[
  {name:'草莓爱心',desc:'初学 · 粉红',sample:0},{name:'软萌小熊',desc:'初学 · 奶茶',sample:1},
  {name:'向日葵',desc:'中等 · 黄色',sample:2},{name:'甜甜草莓',desc:'初学 · 红绿',sample:3},
@@ -652,7 +660,8 @@ const PHI=(1+Math.sqrt(5))/2,PH_GOLDEN_MAJOR=1/PHI;
 const PH_DESK_DEPTH=3.2,PH_DESK_WIDTH=PH_DESK_DEPTH*PHI;
 const PH_BOARD_WIDTHS={29:1.84,32:PH_DESK_DEPTH/PHI,52:2.08,64:2.18,128:2.30};
 const PH_BOARD_CHOICES=[.090,.104,.130,.152,.178];
-function phTable(){return positions.find(t=>t.id===activeTable)||positions[0];}
+function isCollabTable(tableId=activeTable){return tableId===COLLAB_ID;}
+function phTable(){return workTables.find(t=>t.id===activeTable)||positions[0];}
 // Full-palette organiser: a dense grid of small colour wells on the right of the table.
 const BIN_COLS=10;
 function phBinPos(i){const t=phTable();return {x:t.x+.98+(i%BIN_COLS)*.112,z:t.z-1.00+Math.floor(i/BIN_COLS)*.13,y:1.35};}
@@ -701,7 +710,7 @@ function phAtHeight(px,py,height=1.31){const ray=screenRay(px,py);if(Math.abs(ra
   const t=(height-camPos[1])/ray[1];if(t<=0)return null;return {x:camPos[0]+ray[0]*t,z:camPos[2]+ray[2]*t};}
 function phCanStep(x,z){
   const r=.26;
-  const obstacles=positions.map(t=>({x:t.x,z:t.z,w:2.93+.12,h:2.28+.12}));
+  const obstacles=workTables.map(t=>({x:t.x,z:t.z,w:(t.w||2.93)+.12,h:(t.d||2.28)+.12}));
   obstacles.push({x:13.48,z:-10.92,w:3.36,h:7.20},{x:-12,z:16.75,w:7.5,h:2.3});
   if(x<ROOM.minX+r||x>ROOM.maxX-r||z<ROOM.minZ+r||z>ROOM.maxZ-r)return false;
   for(const o of obstacles){const cx=Math.max(o.x-o.w/2,Math.min(x,o.x+o.w/2)),cz=Math.max(o.z-o.h/2,Math.min(z,o.z+o.h/2));
@@ -779,6 +788,7 @@ function phSit(t){
   const saved=referenceByTable[activeTable];PH.looking=!!saved;
   fpSavedYaw=camera.angle;phResetDeskView();document.body.classList.add('desk-focused');
   phSyncBeads();updateStatic();updateSeatHud();
+  if(t.collab)toast('已加入公共大作品。每一颗豆都会实时同步并保存，其他玩家可以同时一起拼。');
 }
 function phStand(){if(PH.wall){phWallExit();return;}if(!PH.active)return;
   if(PH.held)phReturnBead();phReturnLoader();PH.active=false;PH.table=null;PH.bin=null;PH.pointer=null;PH.toolEquipped=false;PH.penEquipped=false;
@@ -1251,7 +1261,7 @@ function phPutDownTool(){if(PH.held)phReturnBead();PH.toolEquipped=false;PH.penE
 // Diegetic clear: press-and-hold the board with an EMPTY hand to tip it and pour every bead
 // off into the sorting dish. No text button — you physically grab the board and dump it.
 function phDumpBoard(){
- if(!PH.active)return;const cells=board().cells,filled=cells.filter(Boolean),n=filled.length;
+ if(!PH.active)return;if(isCollabTable()){phNudge();toast('公共大桌不能整板清空；每个人可以逐颗调整共同作品。');return;}const cells=board().cells,filled=cells.filter(Boolean),n=filled.length;
  if(n===0){phNudge();return;}
  const b=phTrayBounds(),room=Math.max(0,54-PH.beads.length),spill=Math.min(room,n,40);
  for(let j=0;j<spill;j++){const id=filled[(j*7)%filled.length],compartment=swatches.findIndex(s=>s.id===id)%4;
@@ -1266,8 +1276,9 @@ function updateSeatHud(){
  const inkId=isPen?PH.activeColor:(PH.held?PH.held.id:null);
  const cnt=isPen?(inkId?(tray[inkId]||0):0):(PH.held?PH.held.count:0);
  const gsel=PH.grabAll?'all':String(PH.grabCount);
- const deskDrink=tableDrinks[activeTable],drinkSig=heldDrink?`hand:${heldDrink}:${coffeeSips}`:deskDrink?`desk:${deskDrink.id}:${deskDrink.sips}`:'',hasWork=board().cells.some(Boolean);
- const sig=(PH.toolEquipped?PH.tool:'')+'|'+inkId+'|'+cnt+'|'+gsel+'|'+(PH.beads.length>0)+'|'+drinkSig+'|'+hasWork;
+ const deskDrink=tableDrinks[activeTable],drinkSig=heldDrink?`hand:${heldDrink}:${coffeeSips}`:deskDrink?`desk:${deskDrink.id}:${deskDrink.sips}`:'',filledCount=board().cells.reduce((sum,id)=>sum+(id?1:0),0),hasWork=filledCount>0,collaborative=isCollabTable();
+ const collaborators=collaborative?1+[...NET.peers.values()].filter(peer=>peer.seat===COLLAB_ID).length:0;
+ const sig=(PH.toolEquipped?PH.tool:'')+'|'+inkId+'|'+cnt+'|'+gsel+'|'+(PH.beads.length>0)+'|'+drinkSig+'|'+hasWork+'|'+collaborators+'|'+filledCount;
  if(sig===seatHudSig)return;seatHudSig=sig;hud.classList.remove('hidden');
  document.querySelectorAll('#seatHud [data-grab]').forEach(b=>{b.classList.toggle('on',b.dataset.grab===gsel);b.style.opacity=isPen?'.4':'';});
  $('seatToolIco').textContent=PH.toolEquipped?(PH.tool==='pen'?'✎':'⌁'):'✋';
@@ -1280,8 +1291,9 @@ function updateSeatHud(){
  $('seatReturn').disabled=!PH.held;
  const drinkAction=$('seatDrinkAction');if(drinkAction){drinkAction.classList.toggle('hidden',!heldDrink&&!deskDrink);drinkAction.disabled=!!heldDrink&&!!deskDrink;
   drinkAction.textContent=heldDrink?'饮料放桌上':deskDrink?'拿起桌上饮料':'饮料';}
- const boardAction=$('seatBoardAction');if(boardAction){boardAction.classList.toggle('hidden',!hasWork);boardAction.textContent=heldDrink?'先把饮料放桌上':'拿起拼好的底板';}
- const clearHint=$('seatClearHint');if(clearHint)clearHint.classList.toggle('hidden',!hasWork);
+ const boardAction=$('seatBoardAction');if(boardAction){boardAction.classList.toggle('hidden',!hasWork||collaborative);boardAction.textContent=heldDrink?'先把饮料放桌上':'拿起拼好的底板';}
+ const clearHint=$('seatClearHint');if(clearHint)clearHint.classList.toggle('hidden',!hasWork||collaborative);
+ const collabHint=$('seatCollabHint');if(collabHint){collabHint.classList.toggle('hidden',!collaborative);collabHint.innerHTML=`<span>✦</span>公共作品 ${filledCount}/${board().cells.length} · ${collaborators} 人同桌`;}
 }
 // Tactile seat: a freshly-placed bead is skipped in the static bake and drawn in
 // the per-frame dynamic buffer so it visibly descends onto the peg, squashes and
@@ -1400,8 +1412,8 @@ function phEndPointer(px,py){
    PH.tool=which;PH.toolEquipped=true;PH.cursor=phAtHeight(px,py,1.43)||(which==='pen'?phPenRest():phTweezersRest());
    updateStatic();updateSeatHud();SFX.ui();return;
  }
- if(hit?.type==='drawer'){PH.drawerOpen=!PH.drawerOpen;updateStatic();return;}
- if(hit?.type==='boardChoice'){PH.boardOut=true;PH.drawerOpen=false;PH.boardAnimating=.68;phResize(hit.i);updateStatic();return;}
+ if(hit?.type==='drawer'){if(isCollabTable()){toast('合作大桌固定使用 64 × 64 公共画板。');return;}PH.drawerOpen=!PH.drawerOpen;updateStatic();return;}
+ if(hit?.type==='boardChoice'){if(isCollabTable()){toast('公共画板尺寸固定，不能由单个玩家更换。');return;}PH.boardOut=true;PH.drawerOpen=false;PH.boardAnimating=.68;phResize(hit.i);updateStatic();return;}
  if(hit?.type==='ipad'){setTimeout(()=>{if(PH.active)phOpenAlbum();},55);return;}
  // 摇摇笔: tap an empty peg to lay one bead straight from the inked colour's tray stock.
  if(PH.toolEquipped&&PH.tool==='pen'&&!moved&&p&&phOnBoard(p.x,p.z)){phDropBead(p.x,p.z);return;}   // empty peg → lay one (occupied was already handled above)
@@ -1410,7 +1422,7 @@ function phTapIfHolding(px,py){const p=phAtHeight(px,py,1.43);if(!p)return;
  if(PH.bin){if(phIsIn(p.x,p.z,.13,phLoaderBounds()))phFillLoader(swatches[PH.bin.index].id);else if(phIsIn(p.x,p.z,.12,phTrayBounds()))phPour(swatches[PH.bin.index].id,PH.bin.x,PH.bin.z);else{PH.bin=null;updateStatic();}return;}
  if(PH.held){if(phOnBoard(p.x,p.z))phDropBead(p.x,p.z);else phReturnBead();}
 }
-function phResize(n){if(!PH_SIZES.includes(n))return;const old=board();if(n===old.size)return;
+function phResize(n){if(isCollabTable()){toast('公共画板尺寸固定，不能由单个玩家更换。');return;}if(!PH_SIZES.includes(n))return;const old=board();if(n===old.size)return;
  const next=Array(n*n).fill(null),o=Math.floor((n-old.size)/2);
  for(let y=0;y<old.size;y++)for(let x=0;x<old.size;x++){
  const nx=x+o,ny=y+o,id=old.cells[y*old.size+x];if(nx>=0&&nx<n&&ny>=0&&ny<n)next[ny*n+nx]=id;
@@ -1437,6 +1449,7 @@ function phWireAlbum(){
  $('physicalStand').onclick=phStand;
 }
 function carryBoardForIron(){
+ if(isCollabTable()){phNudge();toast('这是大家共同完成的大作品，不能由单个玩家拿走。');return;}
  if(carriedBoard){toast('已经端着一块底板了，请直接前往熨烫间。');return;}
  if(carriedProduct){toast('手里已经拿着烫好的成品，请先挂到展示墙。');return;}
  const n=board().cells.reduce((sum,x)=>sum+(x?1:0),0);if(n<=0){phNudge();toast('底板上还没有拼豆，先完成作品再拿起来。');return;}
@@ -1471,6 +1484,26 @@ function sampledColor(work,x,y,outSize){
  const mid=cells[Math.min(n-1,Math.floor((c+d)/2))*n+Math.min(n-1,Math.floor((a+b)/2))];if(mid)return mid;
  for(let py=c;py<d;py++)for(let px=a;px<b;px++)if(cells[py*n+px])return cells[py*n+px];
  return null;
+}
+// The communal table is intentionally much larger than the individual desks. Its 64x64
+// board stays in the shop and acts as one durable canvas that every connected player edits.
+function addCollabTable(m){
+ const t=COLLAB_TABLE,work=tableBoards[COLLAB_ID],boardX=t.x-.48,boardZ=t.z,boardW=3.46;
+ // A calm green rug makes the shared area readable from across the room.
+ m.box(t.x,.026,t.z,t.w+.72,.038,t.d+.74,'#aebfa8');m.box(t.x,.047,t.z,t.w+.43,.018,t.d+.45,'#dfe4d4');
+ for(const dx of [-2.62,2.62])for(const dz of [-1.58,1.58])m.box(t.x+dx,.45,t.z+dz,.19,.82,.19,'#765742');
+ m.box(t.x,.87,t.z,t.w-.10,.24,t.d-.10,'#a67653');m.box(t.x,1.015,t.z,t.w,.07,t.d,'#e2bd91');
+ // Fixed public pegboard. Subtle eighth-grid lines make a large composition easier to plan.
+ m.box(boardX,1.074,boardZ,boardW+.14,.065,boardW+.14,'#78968b');m.box(boardX,1.116,boardZ,boardW,.025,boardW,'#fff5dc');
+ for(let k=1;k<8;k++){const o=-boardW/2+boardW*k/8;m.box(boardX+o,1.134,boardZ,.018,.012,boardW,'#d8c9ac');m.box(boardX,1.134,boardZ+o,boardW,.012,.018,'#d8c9ac');}
+ for(let py=0;py<32;py++)for(let px=0;px<32;px++){const id=sampledColor(work,px,py,32);if(id)m.box(boardX+(px-15.5)*boardW/32,1.158,boardZ+(py-15.5)*boardW/32,boardW/34,.046,boardW/34,glHex(id));}
+ // Shared colour wells and tools occupy the right-hand wing of the table.
+ m.box(t.x+2.20,1.075,t.z,.82,.13,3.50,'#f5ecdd');
+ for(let q=0;q<24;q++){const xx=t.x+2.02+(q%3)*.19,zz=t.z-1.48+Math.floor(q/3)*.42;m.box(xx,1.16,zz,.16,.055,.34,swatches[(q*3+6)%swatches.length].hex);}
+ m.box(t.x+1.50,1.09,t.z-1.35,.33,.08,.58,'#456e6d');m.box(t.x+1.50,1.17,t.z-1.35,.09,.12,.49,'#c6ece8');
+ // Six seats communicate that this is a genuinely multi-person workspace.
+ for(const sx of [-2.05,0,2.05])for(const side of [-1,1]){const z=t.z+side*(t.d/2+.48);m.box(t.x+sx,.43,z,.82,.17,.62,side<0?'#859f8b':'#b47e59');m.box(t.x+sx,.79,z+side*.28,.82,.62,.12,side<0?'#718b79':'#9c6e50');}
+ if(tableDrinks[COLLAB_ID])addDrinkCup(m,t.x+1.52,1.20,t.z+1.38,tableDrinks[COLLAB_ID],.9);
 }
 // A real craft-shop style "mixed finish" display: shadow boxes, a textured
 // towel-iron sample, a cork keychain board, magnetic samples and shelf standees.
@@ -1628,7 +1661,7 @@ function buildStatic(){
   m.box(x,.035,z,w-.22,.02,d-.23,'#e5d7c4');
  }
  // Display supplies and inspiration prints among the craft spaces.
- for(const [x,z,w] of [[-11.6,-3.0,2.4],[.7,8.7,3.0],[-3.0,1.3,2.6]]){
+ for(const [x,z,w] of [[-11.6,-3.0,2.4],[-.35,7.45,2.6],[-3.0,1.3,2.6]]){
   m.box(x,.65,z,w,1.15,.64,'#b89371');m.box(x,1.30,z,w+.10,.11,.72,'#e8cfad');
   for(let j=0;j<5;j++)m.box(x-w*.35+j*w*.175,1.43,z,.2,.13,.26,swatches[(j+8)%24].hex);
  }
@@ -1659,6 +1692,7 @@ function buildStatic(){
   // Existing user-created work only; sample patterns are never pre-filled at desks.
   const work=tableBoards[t.id];if(carriedBoard!==t.id&&work.cells.some(Boolean))for(let py=0;py<20;py++)for(let px=0;px<20;px++){const id=sampledColor(work,px,py,20);if(id)m.box(t.x-.22+(px-9.5)*.064,1.079,t.z+(py-9.5)*.067,.060,.025,.060,colorLookup[id]);}
  });
+ addCollabTable(m);
  // Extra occupied corners and less rigid visual rhythm.
  m.box(-12.4,.57,3.1,3.1,1.03,1.2,'#b88762');m.box(-12.4,1.14,3.1,3.3,.12,1.4,'#e4c7a4');
  m.box(12.55,.60,-5.0,3.7,1.08,1.35,'#bb9878');m.box(12.55,1.18,-5.0,3.9,.12,1.5,'#e8d1b2');
@@ -1833,28 +1867,55 @@ function netStart(){
   else if('BroadcastChannel' in window){NET.chan=new BroadcastChannel('bead-house-room-v1');NET.chan.onmessage=e=>netRecv(e.data);NET.on=true;netSend({t:'hi',id:NET.id});}
   if(NET.roomUrl){NET.on=true;netPoll();netSend({t:'hi',id:NET.id});}else{NET.restoring=false;NET.restored=true;}
  }catch(_e){NET.on=false;}
- try{window.addEventListener('beforeunload',()=>{for(const tableId of names)if(boardSync.inspect(tableId).pendingLocal)netSendBoard(true,tableId);boardSync.dispose();netSavePlayer(true);netSend({t:'bye',id:NET.id});NET.stopped=true;clearTimeout(NET.retry);clearTimeout(NET.pollTimer);clearTimeout(NET.saveTimer);});}catch(_e){}
+ try{window.addEventListener('beforeunload',()=>{for(const tableId of names)if(boardSync.inspect(tableId).pendingLocal)netSendBoard(true,tableId);flushCollabChanges();boardSync.dispose();netSavePlayer(true);netSend({t:'bye',id:NET.id});NET.stopped=true;clearTimeout(NET.retry);clearTimeout(NET.pollTimer);clearTimeout(NET.saveTimer);clearTimeout(collabFlushTimer);});}catch(_e){}
 }
 function netRemember(mid){if(!mid)return false;if(NET.seen.has(mid))return true;NET.seen.add(mid);if(NET.seen.size>1800)NET.seen=new Set([...NET.seen].slice(-900));return false;}
+function collabCellFromChar(ch){const index=COLOR_CHARS.indexOf(ch);return index>=0?swatches[index]?.id||null:null;}
+function flushCollabChanges(){
+ clearTimeout(collabFlushTimer);collabFlushTimer=null;if(!collabQueuedCells.size)return;
+ const changes=[...collabQueuedCells.entries()];collabQueuedCells.clear();netSend({t:'board:patch',table:COLLAB_ID,size:64,changes});
+}
+function netSendCollabChanges(nextPixels){
+ if(typeof nextPixels!=='string'||nextPixels.length!==64*64||nextPixels===collabShadow)return;
+ let changed=false;for(let i=0;i<nextPixels.length;i++)if(nextPixels[i]!==collabShadow[i]){collabPendingCells.set(i,nextPixels[i]);collabQueuedCells.set(i,nextPixels[i]);changed=true;}
+ collabShadow=nextPixels;if(changed){clearTimeout(collabFlushTimer);collabFlushTimer=setTimeout(flushCollabChanges,80);}
+}
+function ackCollabChanges(changes){for(const change of changes||[]){const index=change?.[0],value=change?.[1];if(collabPendingCells.get(index)===value)collabPendingCells.delete(index);}}
+function finishCollabReceive(){
+ collabShadow=packCells(tableBoards[COLLAB_ID].cells);try{localStorage.setItem('bead-house.v5.table'+COLLAB_ID,JSON.stringify({size:64,pixels:collabShadow}));}catch(_e){}
+ if(PH.active&&activeTable===COLLAB_ID){try{rebuildBoardRaster();updateCount();updateSeatHud();}catch(_e){}}try{updateStatic();}catch(_e){}
+}
+function receiveCollabBoard(msg){
+ const revision=Number.isSafeInteger(msg.revision)?msg.revision:0;if(revision<collabRevision)return;
+ const cells=unpackCells(msg.cells,64);if(!cells)return;for(const [index,value] of collabPendingCells)if(index>=0&&index<cells.length)cells[index]=collabCellFromChar(value);
+ tableBoards[COLLAB_ID]={size:64,cells};collabRevision=revision;finishCollabReceive();
+}
+function receiveCollabPatch(msg){
+ if(!Array.isArray(msg.changes))return;const work=tableBoards[COLLAB_ID];
+ for(const change of msg.changes){const index=change?.[0],value=change?.[1];if(!Number.isInteger(index)||index<0||index>=work.cells.length||typeof value!=='string'||value.length!==1)continue;
+  const pending=collabPendingCells.get(index);if(pending!==undefined){if(msg.id===NET.id&&pending===value)collabPendingCells.delete(index);else continue;}work.cells[index]=collabCellFromChar(value);}
+ if(Number.isSafeInteger(msg.revision))collabRevision=Math.max(collabRevision,msg.revision);finishCollabReceive();
+}
 function netPost(packet){if(!NET.roomUrl)return;const now=performance.now();if(packet.t==='state'){if(now-NET.lastHttpState<420)return;NET.lastHttpState=now;}
- const retryable=['board','gallery:add','gallery:put','gallery:remove','table:drink','player:save'].includes(packet.t);
- try{fetch(NET.roomUrl,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(packet),keepalive:retryable||packet.t==='bye'}).then(async response=>{if(response.ok){if(packet.t==='board'){try{const data=await response.json();if(data.board)netRecv(data.board);}catch(_e){}}return;}if(retryable&&!NET.stopped)setTimeout(()=>netPost(packet),1200);}).catch(()=>{if(retryable&&!NET.stopped)setTimeout(()=>netPost(packet),1200);});}catch(_e){}
+ const retryable=['board','board:patch','gallery:add','gallery:put','gallery:remove','table:drink','player:save'].includes(packet.t);
+ try{fetch(NET.roomUrl,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(packet),keepalive:retryable||packet.t==='bye'}).then(async response=>{if(response.ok){if(packet.t==='board'||packet.t==='board:patch'){try{const data=await response.json();if(packet.t==='board:patch')ackCollabChanges(packet.changes);if(data.board)netRecv(data.board);}catch(_e){}}return;}if(retryable&&!NET.stopped)setTimeout(()=>netPost(packet),1200);}).catch(()=>{if(retryable&&!NET.stopped)setTimeout(()=>netPost(packet),1200);});}catch(_e){}
 }
 async function netPoll(){if(NET.stopped||!NET.roomUrl)return;if(NET.pollBusy){NET.pollTimer=setTimeout(netPoll,450);return;}NET.pollBusy=true;
  try{const count=NET.pollCount++,params=new URLSearchParams();if(count%3===0){params.set('boards','1');params.set('drinks','1');}if(count%24===0)params.set('gallery','1');if(!NET.restored)params.set('player',NET.id);const response=await fetch(`${NET.roomUrl}?${params}`,{cache:'no-store'});if(response.ok){const data=await response.json();for(const msg of data.events||[])if(!netRemember(msg.mid))netRecv(msg);for(const msg of data.boards||[])netRecv(msg);for(const msg of data.tableDrinks||[])netRecv(msg);if(Array.isArray(data.gallery))replaceGalleryItems(data.gallery);NET.durable=!!data.durable;if(!NET.restored){applyCloudPlayer(data.player);NET.restoring=false;NET.restored=true;NET.lastPlayerSig=JSON.stringify(cloudPlayerSnapshot());}NET.on=true;}}
  catch(_e){}finally{NET.pollBusy=false;NET.pollTimer=setTimeout(netPoll,document.hidden?1200:450);}
 }
-function netSend(msg){const packet={...msg,id:msg.id||NET.id,mid:msg.mid||`${NET.id}-${Date.now().toString(36)}-${(++NET.mid).toString(36)}`};if(packet.t!=='player:save'){try{if(NET.ws&&NET.ws.readyState===1)NET.ws.send(JSON.stringify(packet));else if(NET.chan)NET.chan.postMessage(packet);}catch(_e){}}netPost(packet);}
+function netSend(msg){const packet={...msg,id:msg.id||NET.id,mid:msg.mid||`${NET.id}-${Date.now().toString(36)}-${(++NET.mid).toString(36)}`};if(packet.t!=='player:save'){try{if(NET.ws&&NET.ws.readyState===1)NET.ws.send(JSON.stringify(packet));else if(NET.chan)NET.chan.postMessage(packet);}catch(_e){}}netPost(packet);return packet;}
 function netRecv(msg){
- if(!msg||(msg.id===NET.id&&!['board','table:drink'].includes(msg.t)))return;
- if(msg.t==='state'){const p=NET.peers.get(msg.id)||{};Object.assign(p,msg);p.last=performance.now();NET.peers.set(msg.id,p);}
- else if(msg.t==='bye')NET.peers.delete(msg.id);
- else if(msg.t==='hi'){netBroadcastSelf(true);if(PH.active&&activeTable)netSendBoard(true,activeTable);if(!NET.roomUrl)for(const item of gallery)netSend({t:'gallery:add',id:NET.id,item,sync:true});}
- else if(msg.t==='board'&&names.includes(msg.table)&&sizeOptions.includes(msg.size)){const decision=boardSync.receive(msg.table,msg);if(!decision.apply)return;const cells=unpackCells(msg.cells,msg.size);if(cells){tableBoards[msg.table]={size:msg.size,cells};try{localStorage.setItem('bead-house.v5.table'+msg.table,JSON.stringify({size:msg.size,pixels:msg.cells}));}catch(_e){}if(PH.active&&activeTable===msg.table){try{rebuildBoardRaster();updateCount();}catch(_e){}}try{updateStatic();}catch(_e){}}}
+ if(!msg||(msg.id===NET.id&&!['board','board:patch','table:drink'].includes(msg.t)))return;
+ if(msg.t==='state'){const p=NET.peers.get(msg.id)||{};Object.assign(p,msg);p.last=performance.now();NET.peers.set(msg.id,p);if(PH.active&&activeTable===COLLAB_ID)updateSeatHud();}
+ else if(msg.t==='bye'){NET.peers.delete(msg.id);if(PH.active&&activeTable===COLLAB_ID)updateSeatHud();}
+ else if(msg.t==='hi'){netBroadcastSelf(true);if(PH.active&&activeTable&&!isCollabTable())netSendBoard(true,activeTable);if(!NET.roomUrl)for(const item of gallery)netSend({t:'gallery:add',id:NET.id,item,sync:true});}
+ else if(msg.t==='board'&&boardIds.includes(msg.table)&&sizeOptions.includes(msg.size)){if(msg.table===COLLAB_ID){receiveCollabBoard(msg);return;}const decision=boardSync.receive(msg.table,msg);if(!decision.apply)return;const cells=unpackCells(msg.cells,msg.size);if(cells){tableBoards[msg.table]={size:msg.size,cells};try{localStorage.setItem('bead-house.v5.table'+msg.table,JSON.stringify({size:msg.size,pixels:msg.cells}));}catch(_e){}if(PH.active&&activeTable===msg.table){try{rebuildBoardRaster();updateCount();}catch(_e){}}try{updateStatic();}catch(_e){}}}
+ else if(msg.t==='board:patch'&&msg.table===COLLAB_ID)receiveCollabPatch(msg);
  else if(msg.t==='gallery:add'){const added=mergeGalleryItems([msg.item]);if(added&&!msg.sync)toast(`${msg.item?.author||'一位豆友'}在多人心愿墙挂上了新作品。`);}
  else if(msg.t==='gallery:put'){const changed=putGalleryItems([msg.item]);if(changed&&!msg.sync)toast(`${msg.item?.author||'一位豆友'}在${wallSurface(msg.item?.wallId).label}挂上了作品。`);}
  else if(msg.t==='gallery:remove'){const removed=removeGalleryItem(msg.itemId);if(removed&&!msg.sync)toast(`${msg.id===NET.id?'你':'一位豆友'}取下了墙上的${PRODUCT_META[removed.mount]?.label||'作品'}。`);}
- else if(msg.t==='table:drink'&&names.includes(msg.table)){if(msg.item&&drinks.some(d=>d.id===msg.item.id))tableDrinks[msg.table]={...msg.item,opt:{...(msg.item.opt||{})}};else delete tableDrinks[msg.table];try{updateStatic();if(PH.active&&activeTable===msg.table)updateSeatHud();}catch(_e){}}
+ else if(msg.t==='table:drink'&&boardIds.includes(msg.table)){if(msg.item&&drinks.some(d=>d.id===msg.item.id))tableDrinks[msg.table]={...msg.item,opt:{...(msg.item.opt||{})}};else delete tableDrinks[msg.table];try{updateStatic();if(PH.active&&activeTable===msg.table)updateSeatHud();}catch(_e){}}
 }
 function netSavePlayer(force=false){if(!NET.roomUrl||NET.restoring||NET.stopped)return;const now=performance.now();if(!force&&now-NET.lastPlayerSave<8000)return;const state=cloudPlayerSnapshot(),signature=JSON.stringify(state);if(!force&&signature===NET.lastPlayerSig)return;NET.lastPlayerSave=now;NET.lastPlayerSig=signature;netSend({t:'player:save',state});}
 function markCloudProgress(){if(!NET?.roomUrl||NET.restoring)return;clearTimeout(NET.saveTimer);NET.saveTimer=setTimeout(()=>netSavePlayer(true),550);}
@@ -1866,7 +1927,7 @@ function netBroadcastSelf(force){
 function netPrune(){const now=performance.now();for(const [id,p] of NET.peers)if(now-p.last>3500)NET.peers.delete(id);}
 function netTableOwner(tableId){for(const [,p] of NET.peers)if(p.seat===tableId)return p;return null;}
 function netMarkBoardChanged(tableId=activeTable){if(boardSync)boardSync.changed(tableId);}
-function netSendBoard(force=false,tableId=activeTable){if(boardSync)boardSync.flush(tableId,force);}
+function netSendBoard(force=false,tableId=activeTable){if(tableId!==COLLAB_ID&&boardSync)boardSync.flush(tableId,force);}
 // A standing ~1.8m figure facing `yaw`, for remote players.
 function addFigure(m,x,z,yaw,shirt,bob){bob=bob||0;const skin='#f3d3b2',hair='#5c4638';
  const fx=Math.sin(yaw),fz=Math.cos(yaw),rx=Math.cos(yaw),rz=-Math.sin(yaw);
@@ -1936,6 +1997,7 @@ function pushShadowDisc(arr,x,z,r,strength,squashZ){
 function buildStaticShadows(){
  const a=[];
  for(const t of positions)pushShadowDisc(a,t.x,t.z,2.15,.2,.72);      // worktables
+ pushShadowDisc(a,COLLAB_TABLE.x,COLLAB_TABLE.z,3.65,.22,.68);        // communal worktable
  pushShadowDisc(a,-12,17.6,3.1,.17,.5);                              // bead wall base
  pushShadowDisc(a,12.15,-10.93,2.3,.18,.7);                         // café counter
  pushShadowDisc(a,12.6,16.4,1.9,.18,.8);                           // ironing station
@@ -2002,6 +2064,7 @@ function resize(){const oldAspect=layout.aspect;layout.width=scene.clientWidth;l
  if(scene.width!==w||scene.height!==h){scene.width=w;scene.height=h;if(gl)gl.viewport(0,0,w,h);}}
 function spatialInfo(kind,t){
  if(kind==='desk')return {pos:[t.x,1.7,t.z],point:[t.x,t.z],radius:3.65};
+ if(kind==='collab')return {pos:[COLLAB_TABLE.x,2.15,COLLAB_TABLE.z],point:[COLLAB_TABLE.x,COLLAB_TABLE.z],radius:7.4};
  if(kind==='tablebin')return {pos:[t.x+1.04,1.30,t.z-.2],point:[t.x,t.z],radius:3.65};
  if(kind==='rack')return {pos:[-12,3.5,18.8],point:[-12,16.3],radius:4.5};
  if(kind==='coffee')return {pos:[12.15,2.65,-10.93],point:[12.15,-10.93],radius:4.3};
@@ -2014,7 +2077,7 @@ function updateLabels(){
  if(PH.wall){phRenderWallLabels();return;}
  document.getElementById("sceneLabels").style.display="none";
  let best=null,hovered=null;
- const candidateKinds=new Set(['desk','rack','coffee','station','wall']);
+ const candidateKinds=new Set(['desk','collab','rack','coffee','station','wall']);
  for(const l of labels){
   l.el.style.display='none';
   if(!candidateKinds.has(l.kind))continue;
@@ -2033,6 +2096,7 @@ function updateLabels(){
   const bin=labels.find(l=>l.kind==='tablebin'&&l.t?.id===focus.t.id);if(bin)chosen.push(bin);
  }
  for(const l of chosen){const info=spatialInfo(l.kind,l.t),p=worldToScreen(info.pos);if(!p||p.x<16||p.x>layout.width-16||p.y<48||p.y>layout.height-16)continue;
+  if(l.kind==='collab'){const filled=tableBoards[COLLAB_ID].cells.reduce((sum,id)=>sum+(id?1:0),0),people=1+[...NET.peers.values()].filter(peer=>peer.seat===COLLAB_ID).length;l.el.querySelector('.collab-label-text').textContent=`公共大作品 · ${filled}/4096 · ${people} 人共创`;}
   l.el.style.left=p.x+'px';l.el.style.top=p.y+'px';l.el.style.display='flex';
  }
 }
@@ -2043,24 +2107,30 @@ function createLabels(){
   const small=document.createElement('button');small.className='desk-label spatial-label table-bin-label';small.innerHTML='<span class="spatial-icon">◉</span><span>取豆</span>';small.title=`${t.id} 桌边取豆`;small.setAttribute('aria-label',`${t.id} 号桌取豆`);
   small.onclick=()=>{activeTable=t.id;pickupAt='table';pickupTable=t.id;pickupReturn='pattern';openTablePickup();};root.appendChild(small);labels.push({el:small,t,kind:'tablebin'});
  }
+ const collab=document.createElement('button');collab.type='button';collab.className='collab-callout';collab.innerHTML='<span>✦</span><span class="collab-label-text">公共大作品 · 0/4096 · 进入共创</span>';collab.setAttribute('aria-label','前往公共大桌一起完成64乘64大作品');collab.onclick=()=>approach(COLLAB_TABLE);($('app')||document.body).appendChild(collab);labels.push({el:collab,t:COLLAB_TABLE,kind:'collab'});
  const defs=[['wall','▧','赏画',goGallery],['station','♨','熨烫',goIronStation],['coffee','☕','咖啡',goCoffeeStation]];
  for(const [kind,icon,label,action] of defs){const b=document.createElement('button');b.className=`desk-label spatial-label ${kind}-label`;b.innerHTML=`<span class="spatial-icon">${icon}</span><span>${label}</span>`;b.setAttribute('aria-label',label);b.onclick=action;root.appendChild(b);labels.push({el:b,kind});}
 }
 function nearestDesk(){let best=null,dist=Infinity;for(const t of positions){const d=Math.hypot(player.x-t.x,player.z-(t.z+1.3));if(d<dist){dist=d;best=t;}}return{t:best,dist};}
+function tableApproachPoints(t){
+ const hw=(t.w||2.93)/2+.48,hd=(t.d||2.28)/2+.48;if(!t.collab)return[{x:t.x,z:t.z+hd},{x:t.x,z:t.z-hd},{x:t.x+hw,z:t.z},{x:t.x-hw,z:t.z}];
+ return[-2.05,0,2.05].flatMap(dx=>[{x:t.x+dx,z:t.z+hd},{x:t.x+dx,z:t.z-hd}]).concat([-1.18,1.18].flatMap(dz=>[{x:t.x+hw,z:t.z+dz},{x:t.x-hw,z:t.z+dz}]));
+}
+function tableReady(t){const hw=(t.w||2.93)/2,hd=(t.d||2.28)/2,dx=Math.max(0,Math.abs(player.x-t.x)-hw),dz=Math.max(0,Math.abs(player.z-t.z)-hd);return Math.hypot(dx,dz)<.72;}
 function approach(t){
  if(carriedBoard){toast('双手正端着底板，不能坐下拼豆。请先送到熨烫间。');return;}
  if(carriedProduct){toast('手里拿着烫好的成品，请先到展示墙挂上。');return;}
  pendingStation=false;pendingBeadStation=false;pendingCoffee=false;
  // One seat per table: if another player is already working here, walk over to WATCH (their
  // beads sync onto this table live) instead of sitting.
- const owner=netTableOwner(t.id);
- if(owner){pendingTable=null;const c=[{x:t.x,z:t.z+1.62},{x:t.x,z:t.z-1.62},{x:t.x+1.95,z:t.z},{x:t.x-1.95,z:t.z}].filter(p=>phCanStep(p.x,p.z)).sort((a,b)=>Math.hypot(player.x-a.x,player.z-a.z)-Math.hypot(player.x-b.x,player.z-b.z))[0];if(c){const r=phRouteTo(c.x,c.z);player.target=r.length?r.shift():c;player.route=r.length?r:[];}toast(`${owner.nick||'有人'} 正在用这张桌子，你在旁边看看～`);return;}
+ const owner=t.collab?null:netTableOwner(t.id);
+ if(owner){pendingTable=null;const c=tableApproachPoints(t).filter(p=>phCanStep(p.x,p.z)).sort((a,b)=>Math.hypot(player.x-a.x,player.z-a.z)-Math.hypot(player.x-b.x,player.z-b.z))[0];if(c){const r=phRouteTo(c.x,c.z);player.target=r.length?r.shift():c;player.route=r.length?r:[];}toast(`${owner.nick||'有人'} 正在用这张桌子，你在旁边看看～`);return;}
  pendingTable=t;
  // Already standing next to the table? Sit immediately.
- if(Math.hypot(player.x-t.x,player.z-t.z)<2.05){pendingTable=null;player.target=null;player.route=[];phSit(t);return;}
+ if(tableReady(t)){pendingTable=null;player.target=null;player.route=[];phSit(t);return;}
  // Otherwise head for whichever side of the table is NEAREST and actually walkable (not the
  // old fixed side, which could route you around to the wrong spot or get boxed in).
- const cands=[{x:t.x,z:t.z+1.62},{x:t.x,z:t.z-1.62},{x:t.x+1.95,z:t.z},{x:t.x-1.95,z:t.z}];
+ const cands=tableApproachPoints(t);
  let best=null,bd=1e9;
  for(const c of cands){if(!phCanStep(c.x,c.z))continue;const d=Math.hypot(player.x-c.x,player.z-c.z);if(d<bd){bd=d;best=c;}}
  if(!best)best=cands[0];
@@ -2070,7 +2140,7 @@ function approach(t){
 function goGallery(){const nearest=nearestWallSurface();if(carriedProduct&&nearest.surface&&nearest.dist<4.2){hangCarriedProductAt(nearest.surface.id,wallPlayerU(nearest.surface),3.55);return;}const north=wallSurface('north');walkToWallSurface(north,0);toast(carriedProduct?'把成品拿到任意墙面前，点击想挂的位置；按 E 可挂在面前。':'正在前往北墙；所有墙面都能挂作品，空手点击作品可以取下。');}
 function goIronStation(){if(carriedProduct){toast('这件成品已经烫好了，请拿到展示墙亲自挂上。');return;}if(!carriedBoard){toast('请先在拼豆桌拿起拼好的底板，再前往熨烫间。');return;}pendingStation=true;pendingTable=null;pendingBeadStation=false;pendingCoffee=false;
  // Walk through the west-side door into the actual separate ironing room.
- if(player.x<9.35||player.z<9.75){player.route=[{x:7.1,z:14.18},{x:10.75,z:14.18},{x:12.6,z:16.0}];}
+ if(player.x<9.35||player.z<9.75){const aroundTable=phRouteTo(8.05,14.18);player.route=[...aroundTable,{x:10.75,z:14.18},{x:12.6,z:16.0}];}
  else player.route=[{x:12.6,z:16.0}];
  player.target=player.route.shift();toast('正在从侧面入口前往独立熨烫间…');}
 
@@ -2108,7 +2178,7 @@ function update(dt){
  if(activeModal)return;const carryStartX=player.x,carryStartZ=player.z;let dx=Number(input.d)-Number(input.a),dz=Number(input.s)-Number(input.w),moving=false;
  // Robust sit: the instant you're beside the table you walked up to, sit down — no need to
  // land exactly on a seat point (which could leave you a step short, stuck, or on the wrong side).
- if(pendingTable&&Math.hypot(player.x-pendingTable.x,player.z-pendingTable.z)<2.05){const t=pendingTable;pendingTable=null;player.target=null;player.route=[];if(netTableOwner(t.id))toast(`有人刚坐下了，你在旁边看看～`);else phSit(t);return;}
+ if(pendingTable&&tableReady(pendingTable)){const t=pendingTable;pendingTable=null;player.target=null;player.route=[];if(!t.collab&&netTableOwner(t.id))toast(`有人刚坐下了，你在旁边看看～`);else phSit(t);return;}
  if(pendingCoffee&&Math.hypot(player.x-COFFEE_POS.x,player.z-COFFEE_POS.z)<2.8){pendingCoffee=false;player.target=null;player.route=[];takeCoffee();return;} // open the café as soon as you reach the counter
  if(pendingBeadStation&&Math.hypot(player.x+12,player.z-14.7)<2.8){pendingBeadStation=false;player.target=null;player.route=[];phWallEnter();return;} // open the bead wall on arrival
  if(pendingStation&&Math.hypot(player.x-12.6,player.z-16)<2.8){pendingStation=false;player.target=null;player.route=[];phAutoIron();return;} // open the ironing station on arrival
@@ -2582,7 +2652,7 @@ function wire(){
   // Cast the tap ray against furniture and every interactive wall surface.
   const ray=screenRay(px,py);
   let hitTable=null,hitTableT=1e9;
-  for(const t of positions){const tt=rayAABB(camPos,ray,[t.x-1.55,0,t.z-1.3],[t.x+1.55,1.5,t.z+1.3]);if(tt!=null&&tt<hitTableT){hitTableT=tt;hitTable=t;}}
+  for(const t of workTables){const hw=(t.w||3.10)/2,hd=(t.d||2.60)/2,tt=rayAABB(camPos,ray,[t.x-hw,0,t.z-hd],[t.x+hw,1.55,t.z+hd]);if(tt!=null&&tt<hitTableT){hitTableT=tt;hitTable=t;}}
   const stations=[{mn:[10.9,0,-14.6],mx:[16.5,2.0,-6.6],go:goCoffeeStation},   // café counter, machines & barista
                   {mn:[10.4,0,15.6],mx:[16.0,1.6,18.6],go:goIronStation},       // ironing table
                   {mn:[-16.7,0,18.7],mx:[-7.2,4.2,20.4],go:goBeadStation}];      // bead wall
@@ -2699,6 +2769,17 @@ function drawFallback(){
   const work=tableBoards[t.id];if(carriedBoard!==t.id&&work.cells.some(Boolean))for(let py=0;py<18;py++)for(let px=0;px<18;px++){const id=sampledColor(work,px,py,18);if(id)circle([t.x-.22+(px-8.5)*.075,1.08,t.z+(py-8.5)*.075],.034,colorLookup[id]);}
   if(tableDrinks[t.id]){const d=drinkById(tableDrinks[t.id].id);box(t.x-1.03,1.14,t.z+.61,.22,.26,.22,d.cup||'#f4eee4');circle([t.x-1.03,1.29,t.z+.61],.08,d.drink);}
  });
+ // Software-renderer version of the 64x64 communal table.
+ {const t=COLLAB_TABLE,work=tableBoards[COLLAB_ID],bx=t.x-.48,bw=3.46;
+  box(t.x,.03,t.z,t.w+.72,.04,t.d+.74,'#afc0a9');
+  for(const dx of [-2.62,2.62])for(const dz of [-1.58,1.58])box(t.x+dx,.45,t.z+dz,.19,.82,.19,'#765742');
+  box(t.x,.87,t.z,t.w-.10,.24,t.d-.10,'#a67653');box(t.x,1.015,t.z,t.w,.07,t.d,'#e2bd91');
+  box(bx,1.075,t.z,bw+.14,.07,bw+.14,'#78968b');box(bx,1.12,t.z,bw,.025,bw,'#fff5dc');
+  for(let py=0;py<28;py++)for(let px=0;px<28;px++){const id=sampledColor(work,px,py,28);if(id)circle([bx+(px-13.5)*bw/28,1.16,t.z+(py-13.5)*bw/28],bw/61,colorLookup[id]);}
+  box(t.x+2.2,1.08,t.z,.82,.14,3.5,'#f5ecdd');for(let q=0;q<24;q++)box(t.x+2.02+(q%3)*.19,1.16,t.z-1.48+Math.floor(q/3)*.42,.16,.055,.34,swatches[(q*3+6)%swatches.length].hex);
+  for(const sx of [-2.05,0,2.05])for(const side of [-1,1]){const z=t.z+side*(t.d/2+.48);box(t.x+sx,.43,z,.82,.17,.62,side<0?'#859f8b':'#b47e59');box(t.x+sx,.79,z+side*.28,.82,.62,.12,side<0?'#718b79':'#9c6e50');}
+  if(tableDrinks[COLLAB_ID]){const d=drinkById(tableDrinks[COLLAB_ID].id);box(t.x+1.52,1.27,t.z+1.38,.22,.28,.22,d.cup||'#f4eee4');circle([t.x+1.52,1.43,t.z+1.38],.08,d.drink);}
+ }
  // Side wall display storage and a scattered reception / lounge.
  for(const z of [-15,-1,7]){box(-15.65,.70,z,1.35,1.24,3.3,'#a27e61');box(-15.65,1.36,z,1.48,.12,3.35,'#e3c19c');}
  box(-11.4,.87,12,6.7,1.58,2.2,'#ba8b68');box(-11.4,1.72,12,6.9,.14,2.3,'#ebcfaf');

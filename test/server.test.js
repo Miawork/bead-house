@@ -100,6 +100,37 @@ test('rejects stale board snapshots so placed beads cannot roll back', async t =
   assert.equal(snapshot.boards[0].cells.slice(0, 2), 'AA');
 });
 
+test('merges simultaneous cell patches on the durable communal 64x64 board', async t => {
+  const dataDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'bead-house-collab-'));
+  let running = await start(dataDir);
+  t.after(async () => {
+    if (running.app.server.listening) await running.app.close();
+    await fsp.rm(dataDir, { recursive: true, force: true });
+  });
+
+  const patches = [
+    { t: 'board:patch', id: 'p-collab-a', mid: 'collab-a-1', table: 'M', size: 64, changes: [[17, 'A'], [18, 'B']] },
+    { t: 'board:patch', id: 'p-collab-b', mid: 'collab-b-1', table: 'M', size: 64, changes: [[19, 'C'], [20, 'D']] }
+  ];
+  const responses = await Promise.all(patches.map(message => post(running.origin, message)));
+  assert.deepEqual(responses.map(response => response.status), [202, 202]);
+
+  let snapshot = await (await fetch(`${running.origin}/api/room?boards=1`)).json();
+  let board = snapshot.boards.find(item => item.table === 'M');
+  assert.equal(board.size, 64);
+  assert.equal(board.cells.slice(17, 21), 'ABCD');
+  assert.equal(board.revision, 2);
+
+  assert.equal((await post(running.origin, { t: 'board', id: 'p-collab-a', mid: 'collab-full', table: 'M', size: 64, cells: '.'.repeat(4096), revision: 3 })).status, 400);
+
+  await running.app.close();
+  running = await start(dataDir);
+  snapshot = await (await fetch(`${running.origin}/api/room?boards=1`)).json();
+  board = snapshot.boards.find(item => item.table === 'M');
+  assert.equal(board.cells.slice(17, 21), 'ABCD');
+  assert.equal(board.revision, 2);
+});
+
 test('relays live multiplayer messages through the same-origin WebSocket', async t => {
   const dataDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'bead-house-ws-'));
   const { app, wsOrigin } = await start(dataDir);
