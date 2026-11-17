@@ -121,10 +121,10 @@ function gradientRank(a,b){const A=hexToHsl(a.hex),B=hexToHsl(b.hex),na=A[1]<.12
  if(na&&nb)return B[2]-A[2];           // neutrals ordered light→dark
  if(Math.abs(A[0]-B[0])>.5)return A[0]-B[0]; // chromatic ordered by hue (red→orange→…→violet)
  return B[2]-A[2];}                    // same hue: lighter tint first
-// Powdery room palette: the cool ceiling, warm wallpaper and oat floor stay visibly
-// separate without falling back to harsh outlines or saturated toy colours. Real fuse-bead
-// colours are excluded below so finished artwork remains the visual focus of the studio.
-const CUTE_SCENE={ink:'#687387',paper:'#fffaf4',ceiling:'#e3edf1',wall:'#f5ede5',wallAlt:'#efe5df',floor:'#e3d3c0',floorAlt:'#eadcca',trim:'#d7c2b3',cream:'#f3e8dc',tan:'#d8c0aa',brown:'#b99d8d',yellow:'#ead6a8',blue:'#bfd3df',pink:'#e7cad7',purple:'#d2cbe1',mint:'#c5dcd0',peach:'#edd5ca',green:'#a9c3b5'};
+// Matte milk-tea palette: warm grey walls, blue-grey ceiling, walnut-oat floor and muted
+// sage / dusty-rose furniture reduce large luminous areas without making the room muddy.
+// Real fuse-bead colours stay exact so completed artwork remains the visual focus.
+const CUTE_SCENE={ink:'#676c78',paper:'#f2ece5',ceiling:'#d7dfe1',wall:'#e8ddd3',wallAlt:'#e3d9d4',floor:'#d0bea9',floorAlt:'#d7c8b6',trim:'#c4ad9d',cream:'#e6d9cd',tan:'#cbb39c',brown:'#a78d7e',yellow:'#d6bb88',blue:'#a8bec8',pink:'#d3b4c0',purple:'#beb6cb',mint:'#aec5b8',peach:'#dbc0b4',green:'#91ab9d'};
 const CUTE_BEAD_HEX=new Set(swatches.flatMap(s=>[s.hex,glHex(s.id)]).map(v=>v.toUpperCase()));
 const CUTE_SCENE_HEX=new Set(Object.values(CUTE_SCENE).map(v=>v.toUpperCase()));
 function cuteSceneColor(hex){
@@ -1997,16 +1997,16 @@ function prepareGL(){
   +'vColor=aColor*(.91+light*.09);'
   +'vec4 p=uMatrix*vec4(aPos+N*uOutline,1.);gl_Position=p;vDepth=p.w;}';
  const frag='precision mediump float;uniform float uInkPass;varying vec3 vColor;varying float vDepth;'
-  +'void main(){if(uInkPass>.5){gl_FragColor=vec4(.408,.451,.529,1.);return;}'
-  +'vec3 c=vColor;float l=dot(c,vec3(.299,.587,.114));c=mix(vec3(l),c,.88);'
-  +'vec3 fog=vec3(.976,.965,.945);float f=clamp((vDepth-58.)/130.,0.,.055);c=mix(c,fog,f);'
+  +'void main(){if(uInkPass>.5){gl_FragColor=vec4(.404,.424,.471,1.);return;}'
+  +'vec3 c=vColor;float l=dot(c,vec3(.299,.587,.114));c=mix(vec3(l),c,.82)*.96;'
+  +'vec3 fog=vec3(.922,.902,.875);float f=clamp((vDepth-58.)/130.,0.,.055);c=mix(c,fog,f);'
   +'gl_FragColor=vec4(c,1.);}';
  program=gl.createProgram();gl.attachShader(program,compileShader(gl,gl.VERTEX_SHADER,vert));gl.attachShader(program,compileShader(gl,gl.FRAGMENT_SHADER,frag));gl.linkProgram(program);
  if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));gl.useProgram(program);
  loc={p:gl.getAttribLocation(program,'aPos'),n:gl.getAttribLocation(program,'aNormal'),c:gl.getAttribLocation(program,'aColor'),m:gl.getUniformLocation(program,'uMatrix'),cam:gl.getUniformLocation(program,'uCam'),outline:gl.getUniformLocation(program,'uOutline'),ink:gl.getUniformLocation(program,'uInkPass')};
  // Separate soft-shadow program: flat black discs with per-vertex alpha, blended onto the floor.
  const sv='attribute vec3 aPos;attribute float aA;uniform mat4 uMatrix;varying float vA;void main(){gl_Position=uMatrix*vec4(aPos,1.);vA=aA;}';
- const sf='precision mediump float;varying float vA;void main(){gl_FragColor=vec4(.408,.451,.529,vA);}';
+ const sf='precision mediump float;varying float vA;void main(){gl_FragColor=vec4(.404,.424,.471,vA);}';
  shadowProg=gl.createProgram();gl.attachShader(shadowProg,compileShader(gl,gl.VERTEX_SHADER,sv));gl.attachShader(shadowProg,compileShader(gl,gl.FRAGMENT_SHADER,sf));gl.linkProgram(shadowProg);
  shadowLoc={p:gl.getAttribLocation(shadowProg,'aPos'),a:gl.getAttribLocation(shadowProg,'aA'),m:gl.getUniformLocation(shadowProg,'uMatrix')};
  // Particle program: soft camera-facing discs with per-vertex RGBA (steam, dust).
@@ -2015,7 +2015,7 @@ function prepareGL(){
  partProg=gl.createProgram();gl.attachShader(partProg,compileShader(gl,gl.VERTEX_SHADER,pv));gl.attachShader(partProg,compileShader(gl,gl.FRAGMENT_SHADER,pf));gl.linkProgram(partProg);
  partLoc={p:gl.getAttribLocation(partProg,'aPos'),c:gl.getAttribLocation(partProg,'aCol'),m:gl.getUniformLocation(partProg,'uMatrix')};
  glParts=gl.createBuffer();
- gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(.976,.965,.945,1);
+ gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(.922,.902,.875,1);
  glStatic=gl.createBuffer();glPlayer=gl.createBuffer();glShadowStatic=gl.createBuffer();glShadowPlayer=gl.createBuffer();
  phSetupReferenceGL();updateStatic();updateStaticShadows();
 }
