@@ -121,17 +121,18 @@ function gradientRank(a,b){const A=hexToHsl(a.hex),B=hexToHsl(b.hex),na=A[1]<.12
  if(na&&nb)return B[2]-A[2];           // neutrals ordered light→dark
  if(Math.abs(A[0]-B[0])>.5)return A[0]-B[0]; // chromatic ordered by hue (red→orange→…→violet)
  return B[2]-A[2];}                    // same hue: lighter tint first
-// Reference-art palette for the 3D world itself. Real fuse-bead colours are excluded so
-// a player's artwork keeps its exact colour IDs while furniture, walls and characters are
-// translated into the cream / navy / pastel language of the illustrated bead-house brief.
-const CUTE_SCENE={ink:'#273149',paper:'#fff8eb',cream:'#f3e3ca',tan:'#c99e74',brown:'#8f684e',yellow:'#f0b958',blue:'#8bb4d3',pink:'#e1acc7',purple:'#9b8dc8',mint:'#82c3a5',peach:'#efc5b0',green:'#397b5b'};
+// Powdery room palette: the cool ceiling, warm wallpaper and oat floor stay visibly
+// separate without falling back to harsh outlines or saturated toy colours. Real fuse-bead
+// colours are excluded below so finished artwork remains the visual focus of the studio.
+const CUTE_SCENE={ink:'#6f788a',paper:'#fffaf4',ceiling:'#e8f0f3',wall:'#f5ede5',wallAlt:'#f1e8e2',floor:'#e7d8c6',floorAlt:'#ede1d2',trim:'#dbc8ba',cream:'#f3e8dc',tan:'#d8c0aa',brown:'#b99d8d',yellow:'#ead6a8',blue:'#bfd3df',pink:'#e7cad7',purple:'#d2cbe1',mint:'#c5dcd0',peach:'#edd5ca',green:'#a9c3b5'};
 const CUTE_BEAD_HEX=new Set(swatches.flatMap(s=>[s.hex,glHex(s.id)]).map(v=>v.toUpperCase()));
+const CUTE_SCENE_HEX=new Set(Object.values(CUTE_SCENE).map(v=>v.toUpperCase()));
 function cuteSceneColor(hex){
  if(typeof hex!=='string'||!/^#[0-9a-f]{6}$/i.test(hex))return hex;
- const key=hex.toUpperCase();if(CUTE_BEAD_HEX.has(key))return hex;
+ const key=hex.toUpperCase();if(CUTE_BEAD_HEX.has(key)||CUTE_SCENE_HEX.has(key))return hex;
  const [h,s,l]=hexToHsl(hex);
  if(l<.22)return CUTE_SCENE.ink;
- if(s<.11){if(l<.42)return'#4b5264';if(l<.72)return'#a9a7a0';if(l<.90)return CUTE_SCENE.cream;return CUTE_SCENE.paper;}
+ if(s<.11){if(l<.42)return'#8f9098';if(l<.72)return'#bdb8b5';if(l<.90)return CUTE_SCENE.trim;return CUTE_SCENE.paper;}
  if(l>.91)return CUTE_SCENE.paper;
  if(h<18||h>=338)return l<.44?CUTE_SCENE.brown:(l>.78?CUTE_SCENE.peach:CUTE_SCENE.pink);
  if(h<48)return l<.44?CUTE_SCENE.brown:(s>.43?CUTE_SCENE.yellow:CUTE_SCENE.tan);
@@ -1684,17 +1685,17 @@ function cuteSceneSparkle(m,x,y,z,color=CUTE_SCENE.yellow){
 function buildStatic(){
  const m=new Mesh();
  // Warm small-business retail studio, with a dense communal working area.
- m.box(0,-.24,1,34.7,.42,41.5,'#c2a886');
+ m.box(0,-.24,1,34.7,.42,41.5,CUTE_SCENE.floor);
  // Wide, flat, low-contrast floor planks: thin high-contrast ridges shimmer into noise at
  // low pixel resolution, so keep the floor simple and clean (Stardew-style crisp pixels).
- for(let i=0;i<20;i++)m.box(-16.3+i*1.72,-.02,1,1.72,.012,41.3,i%2?'#c9b190':'#c3a884');
- if(!PH.active)m.box(0,6.72,1,34.7,.30,41.5,'#f0e8dc');   // ceiling — hidden while seated so it never blocks the board view
- m.box(0,3.36,-19.72,34.6,6.8,.30,'#e9ddca');
- m.box(0,3.36,21.6,34.6,6.8,.30,'#e4d7c1');   // south wall — was an open white void behind the player
- m.box(-17.04,3.3,1,.30,6.75,41.5,'#e7dbc7');
- m.box(17.04,3.3,1,.30,6.75,41.5,'#e2d5bf');
+ for(let i=0;i<20;i++)m.box(-16.3+i*1.72,-.02,1,1.72,.012,41.3,i%2?CUTE_SCENE.floorAlt:CUTE_SCENE.floor);
+ if(!PH.active)m.box(0,6.72,1,34.7,.30,41.5,CUTE_SCENE.ceiling);   // cool powder-blue ceiling, hidden while seated
+ m.box(0,3.36,-19.72,34.6,6.8,.30,CUTE_SCENE.wall);
+ m.box(0,3.36,21.6,34.6,6.8,.30,CUTE_SCENE.wallAlt);   // slightly blush rear wallpaper keeps the room readable
+ m.box(-17.04,3.3,1,.30,6.75,41.5,CUTE_SCENE.wall);
+ m.box(17.04,3.3,1,.30,6.75,41.5,CUTE_SCENE.wallAlt);
  // ---- Cozy wall decor: wainscoting, framed pastel prints, a flag garland, a plant shelf ----
- for(const [cx,cz,w,d] of [[0,21.52,34.6,.1],[-16.9,1,.1,41.5],[16.9,1,.1,41.5]]){m.box(cx,1.1,cz,w,.85,d,'#dcc7aa');m.box(cx,1.56,cz,w+.02,.06,d+.02,'#c7a983');}
+ for(const [cx,cz,w,d] of [[0,21.52,34.6,.1],[-16.9,1,.1,41.5],[16.9,1,.1,41.5]]){m.box(cx,1.1,cz,w,.85,d,CUTE_SCENE.cream);m.box(cx,1.56,cz,w+.02,.06,d+.02,CUTE_SCENE.trim);}
  for(let i=0;i<4;i++){const x=-6.6+i*4.4,fc=[CUTE_SCENE.pink,CUTE_SCENE.mint,CUTE_SCENE.yellow,CUTE_SCENE.purple][i];
   m.box(x,3.8,21.42,2.4,2.3,.1,CUTE_SCENE.paper);m.box(x,3.8,21.36,2.0,1.9,.06,fc);
   for(let row=0;row<2;row++)for(let col=0;col<3;col++)m.sphere(x-.55+col*.55,4.12-row*.64,21.25,.17,[CUTE_SCENE.yellow,CUTE_SCENE.blue,CUTE_SCENE.pink,CUTE_SCENE.mint,CUTE_SCENE.purple,CUTE_SCENE.blue][row*3+col],6,9);
@@ -1986,27 +1987,26 @@ function renderPeerTags(){
 }
 function compileShader(gl,type,source){const s=gl.createShader(type);gl.shaderSource(s,source);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw Error(gl.getShaderInfoLog(s));return s;}
 function prepareGL(){
- // Illustrated-room lighting: stepped pastel faces plus an expanded navy silhouette.
+ // Illustrated-room lighting: very soft face shading plus a misty blue-grey silhouette.
  // This is applied to the world mesh, not the surrounding webpage UI.
  const vert='attribute vec3 aPos;attribute vec3 aNormal;attribute vec3 aColor;uniform mat4 uMatrix;uniform vec3 uCam;uniform float uOutline;varying vec3 vColor;varying float vDepth;'
   +'void main(){vec3 N=normalize(aNormal);vec3 V=normalize(uCam-aPos);'
   +'vec3 Lk=normalize(vec3(.42,.95,.52));vec3 Lf=normalize(vec3(-.55,.38,-.6));'
   +'float kd=max(dot(N,Lk),0.);float fd=max(dot(N,Lf),0.);'
-  +'float band=floor((kd*.78+fd*.22)*3.+.5)/3.;'
-  +'vColor=aColor*(.78+band*.18);'
+  +'float light=clamp(kd*.72+fd*.28,0.,1.);'
+  +'vColor=aColor*(.91+light*.09);'
   +'vec4 p=uMatrix*vec4(aPos+N*uOutline,1.);gl_Position=p;vDepth=p.w;}';
  const frag='precision mediump float;uniform float uInkPass;varying vec3 vColor;varying float vDepth;'
-  +'void main(){if(uInkPass>.5){gl_FragColor=vec4(.153,.192,.286,1.);return;}'
-  +'vec3 c=floor(vColor*10.+.5)/10.;c=c/(c*.08+.95);'
-  +'float l=dot(c,vec3(.299,.587,.114));c=mix(vec3(l),c,1.04);'
-  +'vec3 fog=vec3(.965,.945,.89);float f=clamp((vDepth-50.)/100.,0.,.10);c=mix(c,fog,f);'
+  +'void main(){if(uInkPass>.5){gl_FragColor=vec4(.435,.471,.541,1.);return;}'
+  +'vec3 c=vColor;float l=dot(c,vec3(.299,.587,.114));c=mix(vec3(l),c,.84);'
+  +'vec3 fog=vec3(.976,.965,.945);float f=clamp((vDepth-38.)/92.,0.,.16);c=mix(c,fog,f);'
   +'gl_FragColor=vec4(c,1.);}';
  program=gl.createProgram();gl.attachShader(program,compileShader(gl,gl.VERTEX_SHADER,vert));gl.attachShader(program,compileShader(gl,gl.FRAGMENT_SHADER,frag));gl.linkProgram(program);
  if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));gl.useProgram(program);
  loc={p:gl.getAttribLocation(program,'aPos'),n:gl.getAttribLocation(program,'aNormal'),c:gl.getAttribLocation(program,'aColor'),m:gl.getUniformLocation(program,'uMatrix'),cam:gl.getUniformLocation(program,'uCam'),outline:gl.getUniformLocation(program,'uOutline'),ink:gl.getUniformLocation(program,'uInkPass')};
  // Separate soft-shadow program: flat black discs with per-vertex alpha, blended onto the floor.
  const sv='attribute vec3 aPos;attribute float aA;uniform mat4 uMatrix;varying float vA;void main(){gl_Position=uMatrix*vec4(aPos,1.);vA=aA;}';
- const sf='precision mediump float;varying float vA;void main(){gl_FragColor=vec4(.153,.192,.286,vA);}';
+ const sf='precision mediump float;varying float vA;void main(){gl_FragColor=vec4(.435,.471,.541,vA);}';
  shadowProg=gl.createProgram();gl.attachShader(shadowProg,compileShader(gl,gl.VERTEX_SHADER,sv));gl.attachShader(shadowProg,compileShader(gl,gl.FRAGMENT_SHADER,sf));gl.linkProgram(shadowProg);
  shadowLoc={p:gl.getAttribLocation(shadowProg,'aPos'),a:gl.getAttribLocation(shadowProg,'aA'),m:gl.getUniformLocation(shadowProg,'uMatrix')};
  // Particle program: soft camera-facing discs with per-vertex RGBA (steam, dust).
@@ -2015,7 +2015,7 @@ function prepareGL(){
  partProg=gl.createProgram();gl.attachShader(partProg,compileShader(gl,gl.VERTEX_SHADER,pv));gl.attachShader(partProg,compileShader(gl,gl.FRAGMENT_SHADER,pf));gl.linkProgram(partProg);
  partLoc={p:gl.getAttribLocation(partProg,'aPos'),c:gl.getAttribLocation(partProg,'aCol'),m:gl.getUniformLocation(partProg,'uMatrix')};
  glParts=gl.createBuffer();
- gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(.99,.972,.92,1);
+ gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(.976,.965,.945,1);
  glStatic=gl.createBuffer();glPlayer=gl.createBuffer();glShadowStatic=gl.createBuffer();glShadowPlayer=gl.createBuffer();
  phSetupReferenceGL();updateStatic();updateStaticShadows();
 }
@@ -2027,11 +2027,11 @@ function pushShadowDisc(arr,x,z,r,strength,squashZ){
 }
 function buildStaticShadows(){
  const a=[];
- for(const t of positions)pushShadowDisc(a,t.x,t.z,2.15,.2,.72);      // worktables
- pushShadowDisc(a,COLLAB_TABLE.x,COLLAB_TABLE.z,3.65,.22,.68);        // communal worktable
- pushShadowDisc(a,-12,17.6,3.1,.17,.5);                              // bead wall base
- pushShadowDisc(a,12.15,-10.93,2.3,.18,.7);                         // café counter
- pushShadowDisc(a,12.6,16.4,1.9,.18,.8);                           // ironing station
+ for(const t of positions)pushShadowDisc(a,t.x,t.z,2.15,.11,.72);      // worktables
+ pushShadowDisc(a,COLLAB_TABLE.x,COLLAB_TABLE.z,3.65,.12,.68);        // communal worktable
+ pushShadowDisc(a,-12,17.6,3.1,.09,.5);                              // bead wall base
+ pushShadowDisc(a,12.15,-10.93,2.3,.10,.7);                         // café counter
+ pushShadowDisc(a,12.6,16.4,1.9,.10,.8);                           // ironing station
  return a;
 }
 function updateStaticShadows(){if(!gl||!glShadowStatic)return;const a=buildStaticShadows();gl.bindBuffer(gl.ARRAY_BUFFER,glShadowStatic);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(a),gl.STATIC_DRAW);shadowStaticCount=a.length/4;}
@@ -2042,7 +2042,7 @@ function drawShadows(){
  const bind=(buf,count)=>{gl.bindBuffer(gl.ARRAY_BUFFER,buf);gl.vertexAttribPointer(shadowLoc.p,3,gl.FLOAT,false,16,0);gl.vertexAttribPointer(shadowLoc.a,1,gl.FLOAT,false,16,12);gl.enableVertexAttribArray(shadowLoc.p);gl.enableVertexAttribArray(shadowLoc.a);gl.drawArrays(gl.TRIANGLES,0,count);};
  if(!PH.active&&!PH.wall&&shadowStaticCount)bind(glShadowStatic,shadowStaticCount);
  // moving player shadow
- if(!PH.active&&!PH.wall&&!firstPerson){const pa=[];pushShadowDisc(pa,player.x,player.z,.62+player.walk*.05,.26,.78);gl.bindBuffer(gl.ARRAY_BUFFER,glShadowPlayer);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(pa),gl.DYNAMIC_DRAW);bind(glShadowPlayer,pa.length/4);}
+ if(!PH.active&&!PH.wall&&!firstPerson){const pa=[];pushShadowDisc(pa,player.x,player.z,.62+player.walk*.05,.13,.78);gl.bindBuffer(gl.ARRAY_BUFFER,glShadowPlayer);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(pa),gl.DYNAMIC_DRAW);bind(glShadowPlayer,pa.length/4);}
  gl.depthMask(true);gl.disable(gl.BLEND);gl.enable(gl.CULL_FACE);gl.useProgram(program);
 }
 // Ambient particle life: café steam, iron steam, held-drink steam, drifting dust motes.
@@ -2086,7 +2086,7 @@ function drawParticles(){
 function updateStatic(){if(!gl)return;const m=buildStatic();gl.bindBuffer(gl.ARRAY_BUFFER,glStatic);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(m.data),gl.STATIC_DRAW);staticVertexCount=m.count;}
 function drawMesh(buffer,count){
  gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.vertexAttribPointer(loc.p,3,gl.FLOAT,false,36,0);gl.vertexAttribPointer(loc.n,3,gl.FLOAT,false,36,12);gl.vertexAttribPointer(loc.c,3,gl.FLOAT,false,36,24);gl.enableVertexAttribArray(loc.p);gl.enableVertexAttribArray(loc.n);gl.enableVertexAttribArray(loc.c);
- gl.cullFace(gl.FRONT);gl.depthMask(false);gl.uniform1f(loc.outline,.026);gl.uniform1f(loc.ink,1);gl.drawArrays(gl.TRIANGLES,0,count);
+ gl.cullFace(gl.FRONT);gl.depthMask(false);gl.uniform1f(loc.outline,.016);gl.uniform1f(loc.ink,1);gl.drawArrays(gl.TRIANGLES,0,count);
  gl.depthMask(true);gl.cullFace(gl.BACK);gl.uniform1f(loc.outline,0);gl.uniform1f(loc.ink,0);gl.drawArrays(gl.TRIANGLES,0,count);
 }
 function resize(){const oldAspect=layout.aspect;layout.width=scene.clientWidth;layout.height=scene.clientHeight;layout.aspect=layout.width/Math.max(1,layout.height);
@@ -2720,8 +2720,8 @@ function drawFallback(){
  if(!ctx2d)return;
  const c=ctx2d,s=renderScale,w=layout.width,h=layout.height;
  c.setTransform(s,0,0,s,0,0);c.imageSmoothingEnabled=false;c.lineJoin='round';c.lineCap='round';c.clearRect(0,0,w,h);
- // Canvas2D receives the same cream backdrop and navy illustration outlines as WebGL.
- const grad=c.createLinearGradient(0,0,w,h);grad.addColorStop(0,CUTE_SCENE.paper);grad.addColorStop(1,CUTE_SCENE.cream);c.fillStyle=grad;c.fillRect(0,0,w,h);
+ // Canvas2D receives the same cool-ceiling / warm-wall separation as WebGL.
+ const grad=c.createLinearGradient(0,0,w,h);grad.addColorStop(0,CUTE_SCENE.ceiling);grad.addColorStop(1,CUTE_SCENE.wall);c.fillStyle=grad;c.fillRect(0,0,w,h);
  // Canvas has no depth buffer. Queue every projected primitive and paint far-to-near so
  // furniture and hand-held tools do not leak through one another as the camera moves.
  const drawQueue=[];
@@ -2731,15 +2731,15 @@ function drawFallback(){
  const polygon=(pts,color,edge=null)=>{const ps=pts.map(worldToScreen);if(ps.some(p=>!p))return;enqueue(depthOf(pts),()=>{c.beginPath();ps.forEach((p,i)=>i?c.lineTo(p.x,p.y):c.moveTo(p.x,p.y));c.closePath();c.fillStyle=cuteSceneColor(color);c.fill();if(edge){c.strokeStyle=edge;c.lineWidth=1.12;c.stroke();}});};
  const box=(x,y,z,wd,ht,dp,color)=>{const L=x-wd/2,R=x+wd/2,B=y-ht/2,T=y+ht/2,N=z-dp/2,F=z+dp/2;
   color=cuteSceneColor(color);const edge=CUTE_SCENE.ink;
-  polygon([[L,B,F],[R,B,F],[R,T,F],[L,T,F]],shade(color,.94),edge);
-  polygon([[R,B,F],[R,B,N],[R,T,N],[R,T,F]],shade(color,.73),edge);
-  polygon([[L,T,N],[L,T,F],[R,T,F],[R,T,N]],shade(color,1.04),edge);
+  polygon([[L,B,F],[R,B,F],[R,T,F],[L,T,F]],shade(color,.98),edge);
+  polygon([[R,B,F],[R,B,N],[R,T,N],[R,T,F]],shade(color,.90),edge);
+  polygon([[L,T,N],[L,T,F],[R,T,F],[R,T,N]],shade(color,1.015),edge);
  };
  const circle=(pos,r,color,depthBias=0)=>{const point=worldToScreen(pos),other=worldToScreen([pos[0]+r,pos[1],pos[2]]);if(!point||!other)return;const rad=Math.max(.8,Math.hypot(point.x-other.x,point.y-other.y));enqueue(depthOf([pos])+depthBias,()=>{c.fillStyle=cuteSceneColor(color);c.beginPath();c.arc(point.x,point.y,rad,0,Math.PI*2);c.fill();if(rad>=1.55){c.strokeStyle=CUTE_SCENE.ink;c.lineWidth=Math.min(1.35,Math.max(.65,rad*.09));c.stroke();}});};
- polygon([[-17,0,-19.7],[17,0,-19.7],[17,0,21],[-17,0,21]],'#ddc2a1');
- for(let x=-16.5;x<17;x+=1.12)box(x,-.03,1,1,.045,41.2,Math.floor(x)%2?'#e8cfaf':'#e3c5a0');
- polygon([[-17,0,-19.7],[17,0,-19.7],[17,6.7,-19.7],[-17,6.7,-19.7]],'#f3e5d4');
- polygon([[-17,0,-19.7],[-17,0,21],[-17,6.7,21],[-17,6.7,-19.7]],'#eddbc6');
+ polygon([[-17,0,-19.7],[17,0,-19.7],[17,0,21],[-17,0,21]],CUTE_SCENE.floor);
+ for(let x=-16.5;x<17;x+=1.12)box(x,-.03,1,1,.045,41.2,Math.floor(x)%2?CUTE_SCENE.floorAlt:CUTE_SCENE.floor);
+ polygon([[-17,0,-19.7],[17,0,-19.7],[17,6.7,-19.7],[-17,6.7,-19.7]],CUTE_SCENE.wall);
+ polygon([[-17,0,-19.7],[-17,0,21],[-17,6.7,21],[-17,6.7,-19.7]],CUTE_SCENE.wallAlt);
  const wallWorks=galleryArtworks();
  // Warm wainscoting and not-too-regular handmade display wall.
  box(0,1.04,-19.36,34.1,2.03,.09,'#dfc5a7');
