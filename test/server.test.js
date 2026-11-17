@@ -36,7 +36,6 @@ test('serves the game and persists the complete shared room', async t => {
   assert.match(homeHtml, /mobileSceneZoom/);
   assert.match(homeHtml, /src\/board-sync\.js/);
   assert.match(homeHtml, /src\/mobile-controls\.js/);
-  assert.match(homeHtml, /src\/arcade\.css/);
   assert.match(homeHtml, /id="roomNavToggle"/);
   assert.match(homeHtml, /id="beadCoach"/);
   assert.match(homeHtml, /id="guideHelp"/);
@@ -50,9 +49,11 @@ test('serves the game and persists the complete shared room', async t => {
   const mobileControlsSource = await fetch(`${running.origin}/src/mobile-controls.js`);
   assert.equal(mobileControlsSource.status, 200);
   assert.match(await mobileControlsSource.text(), /screenRelativeMove/);
-  const arcadeThemeSource = await fetch(`${running.origin}/src/arcade.css`);
-  assert.equal(arcadeThemeSource.status, 200);
-  assert.match(await arcadeThemeSource.text(), /--arcade-ink:#273149/);
+  const sceneSource = await fetch(`${running.origin}/src/app.js`);
+  assert.equal(sceneSource.status, 200);
+  const sceneCode = await sceneSource.text();
+  assert.match(sceneCode, /const CUTE_SCENE=/);
+  assert.match(sceneCode, /uniform float uInkPass/);
 
   const messages = [
     { t: 'board', id: 'p-test-user', mid: 'board-1', table: 'A', size: 16, cells: 'A'.repeat(256), revision: 1 },
