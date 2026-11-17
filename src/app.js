@@ -137,8 +137,9 @@ let activeModal=null,toastTimer=null,ironFinished=false,ironBusy=false,ironJobId
 let ironAnimRaf=0,ironSteam=[];
 const input={w:false,a:false,s:false,d:false};
 const player={x:1.6,z:7.35,walk:0,target:null,route:[]};
-const camera={angle:Math.PI,pitch:.94,distance:33,lookX:0,lookZ:0,aTarget:Math.PI,pTarget:.94,dTarget:33,sway:0,fpLook:-.10,fpLookT:-.10,fov:Math.PI/3,fovTarget:Math.PI/3};
-let firstPerson=true;   // roam the shop in first person (eye-level); seated/wall views keep their own camera
+const TOUCH_UI=BeadMobileControls.isTouchUi(window);
+const camera={angle:Math.PI,pitch:TOUCH_UI?1.08:.94,distance:TOUCH_UI?19:33,lookX:0,lookZ:0,aTarget:Math.PI,pTarget:TOUCH_UI?1.08:.94,dTarget:TOUCH_UI?19:33,sway:0,fpLook:-.10,fpLookT:-.10,fov:Math.PI/3,fovTarget:Math.PI/3};
+let firstPerson=!TOUCH_UI; // phones/tablets use a stable elevated camera; desktop keeps first person
 let fpSavedYaw=Math.PI; // remember first-person facing across sitting at a table
 const layout={width:1,height:1,aspect:1};
 // Render the room at native Retina resolution (capped at 2× for predictable performance).
@@ -693,6 +694,49 @@ function phResetDeskView(){
 }
 const PH_MIN_CAMERA_DISTANCE=2.75,PH_MAX_CAMERA_DISTANCE=11;
 function phClampCameraDistance(value){return Math.max(PH_MIN_CAMERA_DISTANCE,Math.min(PH_MAX_CAMERA_DISTANCE,value));}
+function resetRoamView(notify=true){
+ if(PH.active){phResetDeskView();if(notify)toast('拼豆板视角已回正。');return;}
+ if(PH.wall){camera.aTarget=Math.PI;camera.pTarget=.27;camera.dTarget=10.6;camera.lookX=-12;camera.lookZ=18.3;if(notify)toast('豆墙视角已回正。');return;}
+ if(TOUCH_UI){firstPerson=false;camera.aTarget=Math.PI;camera.pTarget=1.08;camera.dTarget=19;camera.lookX=player.x;camera.lookZ=player.z*.80-1.6;}
+ else{camera.fpLookT=-.10;camera.fovTarget=Math.PI/3;camera.aTarget=Math.atan2(-player.x,-player.z||.0001);}
+ if(notify)toast(TOUCH_UI?'镜头已回到稳定俯视角度。':'镜头已朝向店铺中央。');
+}
+let lastRoomZone='';
+function currentRoomZone(){
+ if(PH.active)return isCollabTable()?'公共大桌':'拼豆桌';if(PH.wall)return'大豆墙';
+ if(player.x>9.1&&player.z>9.6)return'熨烫间';if(player.x>9&&player.z<-5.8)return'咖啡角';
+ if(player.x<-7&&player.z>13.6)return'大豆墙';if(Math.hypot(player.x-COLLAB_TABLE.x,player.z-COLLAB_TABLE.z)<5.2)return'公共大桌区';
+ if(player.z<-14.5)return'心愿展示墙';return'拼豆工作区';
+}
+function updateRoomGuide(){const zone=currentRoomZone();if(zone===lastRoomZone)return;lastRoomZone=zone;const short=$('roomZoneText'),title=$('roomZoneTitle');if(short)short.textContent=`${zone} · 地图`;if(title)title.textContent=zone;}
+function setRoomNav(open){const panel=$('roomNavPanel'),toggle=$('roomNavToggle');if(!panel||!toggle)return;panel.classList.toggle('hidden',!open);toggle.setAttribute('aria-expanded',open?'true':'false');}
+function goRoomDestination(dest){
+ setRoomNav(false);if(activeModal)closeModal();
+ if(dest==='collab')approach(COLLAB_TABLE);else if(dest==='desk'){const near=nearestDesk();if(near.t)approach(near.t);}
+ else if(dest==='coffee')goCoffeeStation();else if(dest==='beads')goBeadStation();else if(dest==='iron')goIronStation();else if(dest==='wall')goGallery();
+}
+const BEAD_COACH_KEY='bead-house.tutorial.beads-v1';
+let beadCoachStep=-1;
+function beadCoachCompleted(){try{return localStorage.getItem(BEAD_COACH_KEY)==='done';}catch(_e){return false;}}
+function renderBeadCoach(){
+ const coach=$('beadCoach');if(!coach)return;if(beadCoachStep<0||!PH.active){coach.classList.add('hidden');return;}
+ const steps=[
+  ['先拿起工具','点桌上的青绿色摇摇笔（推荐）；也可以选择左侧的镊子。'],
+  ['选择一种颜色',PH.tool==='pen'?'点右侧任意彩色豆盒，给摇摇笔吸取颜色。':'点右侧彩色豆盒，把这种颜色倒进分装托盘。'],
+  ['把豆放上画板',PH.tool==='tweezers'&&!PH.held?'先点托盘里的一颗散豆夹起来，再点画板。':'点画板放一颗豆；按住拖动可以连续摆豆。'],
+  ['完成第一颗！','点已经放好的豆可以取下。左上角 ↶ 离桌，右上角“玩法”可以随时重看。']
+ ];
+ const item=steps[Math.min(3,beadCoachStep)];$('beadCoachCount').textContent=`新手引导 ${Math.min(4,beadCoachStep+1)}/4`;$('beadCoachTitle').textContent=item[0];$('beadCoachText').textContent=item[1];
+ coach.classList.remove('hidden');$('beadCoachSkip').classList.toggle('hidden',beadCoachStep>=3);$('beadCoachDone').classList.toggle('hidden',beadCoachStep<3);
+}
+function startBeadCoach(force=false){if(!PH.active)return;if(!force&&beadCoachCompleted())return;beadCoachStep=0;renderBeadCoach();}
+function hideBeadCoach(done=false){if(done)try{localStorage.setItem(BEAD_COACH_KEY,'done');}catch(_e){}beadCoachStep=-1;$('beadCoach')?.classList.add('hidden');}
+function advanceBeadCoach(action){
+ if(beadCoachStep<0)return;if(action==='tool'&&beadCoachStep===0)beadCoachStep=1;
+ else if(action==='color'&&beadCoachStep===1)beadCoachStep=2;
+ else if(action==='place'&&beadCoachStep===2){beadCoachStep=3;try{localStorage.setItem(BEAD_COACH_KEY,'done');}catch(_e){}}
+ renderBeadCoach();
+}
 function phDrawerBounds(){const t=phTable();return {cx:t.x+1.55,cz:t.z+1.15,w:1.05,h:.30};}
 function phLoaderBounds(){const t=phTable();return {cx:t.x+.55,cz:t.z+.72,w:.36,h:.33};}
 function phPenRest(){const t=phTable();return {x:t.x+.92,z:t.z+.64};}
@@ -758,12 +802,12 @@ function phWallEnter(){
 }
 function phWallExit(){
  PH.wall=false;PH.wallOpen=-1;drawerOpened=false;
- document.body.classList.remove('wall-focused');camera.dTarget=29;
+ document.body.classList.remove('wall-focused');if(TOUCH_UI)resetRoamView(false);else camera.dTarget=29;
  updateStatic();
 }
 function phWallTap(px,py){
  // The large wall's six columns and four rows have real physical drawers.
- let nearest=null,min=45;
+ let nearest=null,min=TOUCH_UI?70:45;
  for(let i=0;i<swatches.length;i++){
    const s=wallSlot(i);
    const screen=worldToScreen([s.x,s.y,18.95]);if(!screen)continue;
@@ -788,12 +832,13 @@ function phSit(t){
   const saved=referenceByTable[activeTable];PH.looking=!!saved;
   fpSavedYaw=camera.angle;phResetDeskView();document.body.classList.add('desk-focused');
   phSyncBeads();updateStatic();updateSeatHud();
+  startBeadCoach(false);
   if(t.collab)toast('已加入公共大作品。每一颗豆都会实时同步并保存，其他玩家可以同时一起拼。');
 }
 function phStand(){if(PH.wall){phWallExit();return;}if(!PH.active)return;
   if(PH.held)phReturnBead();phReturnLoader();PH.active=false;PH.table=null;PH.bin=null;PH.pointer=null;PH.toolEquipped=false;PH.penEquipped=false;
-  document.body.classList.remove('desk-focused');phCloseAlbum();
-  camera.dTarget=27;camera.pTarget=.91;if(firstPerson){camera.angle=camera.aTarget=fpSavedYaw;}else camera.aTarget=.41; // restore first-person facing on stand-up
+  document.body.classList.remove('desk-focused');phCloseAlbum();hideBeadCoach(false);
+  if(TOUCH_UI)resetRoamView(false);else{camera.dTarget=27;camera.pTarget=.91;if(firstPerson)camera.angle=camera.aTarget=fpSavedYaw;else camera.aTarget=.41;} // restore roaming view
   const dl=$('diegeticLabels');if(dl)dl.replaceChildren();seatLabels=null;
   updateStatic();updateSeatHud();
 }
@@ -1158,7 +1203,7 @@ function phScreenPick(px,py){
  const register=(type,i,x,y,z,w,h)=>{const s=worldToScreen([x,y,z]);if(!s)return;
   const d=Math.hypot(s.x-px,s.y-py);
   // Every color bin has an explicit AABB collider in local tabletop coordinates.
-  if(Math.abs(p.x-x)<w/2+.045&&Math.abs(p.z-z)<h/2+.045)candidates.push({type,i,x,z,d});
+  if((Math.abs(p.x-x)<w/2+.045&&Math.abs(p.z-z)<h/2+.045)||(TOUCH_UI&&d<30))candidates.push({type,i,x,z,d});
  };
  // Bins prioritize direct AABB hit rather than an invisible UI hit area.
  for(let i=0;i<PH.tableColors.length;i++){if(PH.bin?.index===i)continue;const q=phBinPos(i);register('bin',i,q.x,1.35,q.z,.1,.115);}
@@ -1166,17 +1211,17 @@ function phScreenPick(px,py){
  if(PH.drawerOpen)for(let j=0;j<PH_SIZES.length;j++){const q=phBoardChoicePos(j);register('boardChoice',PH_SIZES[j],q.x,1.35,q.z,.20,.18);}
  const ipad=phReferencePlane();register('ipad',0,ipad.x,1.46,ipad.z,ipad.w+.11,ipad.h+.10);
  for(let i=0;i<PH.beads.length;i++){const q=PH.beads[i],sp=worldToScreen([q.x,q.y,q.z]);if(!sp)continue;
-  const d=Math.hypot(sp.x-px,sp.y-py);if(d<18)candidates.push({type:'bead',i,x:q.x,z:q.z,d});
+  const d=Math.hypot(sp.x-px,sp.y-py);if(d<(TOUCH_UI?31:18))candidates.push({type:'bead',i,x:q.x,z:q.z,d});
  }
  // Paperboard is intentionally lower priority than loose beads.
  if(phOnBoard(p.x,p.z))candidates.push({type:'board',x:p.x,z:p.z,d:140});
  const tr=phTrayBounds();if(phIsIn(p.x,p.z,0,tr))candidates.push({type:'tray',x:p.x,z:p.z,d:120});
  {const tw=phTweezersRest(),tpos=worldToScreen([tw.x,1.35,tw.z]),active=PH.toolEquipped&&PH.tool==='tweezers';
-   if(tpos && Math.hypot(tpos.x-px,tpos.y-py)<42)candidates.push({type:'tweezers',d:active?30:5});
+   if(tpos && Math.hypot(tpos.x-px,tpos.y-py)<(TOUCH_UI?58:42))candidates.push({type:'tweezers',d:active?30:5});
    if(Math.abs(p.x-tw.x)<.22 && Math.abs(p.z-tw.z)<.36)candidates.push({type:'tweezers',d:active?30:5});
  }
  {const pr=phPenRest(),ppos=worldToScreen([pr.x,1.38,pr.z]),active=PH.toolEquipped&&PH.tool==='pen';
-   if(ppos && Math.hypot(ppos.x-px,ppos.y-py)<42)candidates.push({type:'pen',d:active?30:5});
+   if(ppos && Math.hypot(ppos.x-px,ppos.y-py)<(TOUCH_UI?58:42))candidates.push({type:'pen',d:active?30:5});
    if(Math.abs(p.x-pr.x)<.16 && Math.abs(p.z-pr.z)<.3)candidates.push({type:'pen',d:active?30:5});
  }
  candidates.sort((a,b)=>a.d-b.d);return candidates[0]||{type:'tabletop',x:p.x,z:p.z};
@@ -1194,7 +1239,7 @@ function phGrabColor(id){
    // 摇摇笔: just "ink" the pen with this colour — it draws continuously from the tray.
    PH.activeColor=id;PH.held=null;PH.toolEquipped=true;PH.pinchAt=performance.now();
    if(!PH.cursor){const bb=phBoardBounds();PH.cursor={x:bb.cx,z:bb.cz};}
-   updateSeatHud();SFX.pick();return true;
+   updateSeatHud();advanceBeadCoach('color');SFX.pick();return true;
  }
  if(PH.held&&PH.held.id!==id){phNudge();return false;}       // one hand, one colour — put the others down first
  const amount=phGrabAmount(id);
@@ -1203,7 +1248,7 @@ function phGrabColor(id){
  PH.held={id,count:(PH.held?PH.held.count:0)+amount,fromBoard:false};PH.activeColor=id;PH.pinchAt=performance.now();PH.toolEquipped=true;
  for(let k=0;k<amount;k++){const li=PH.beads.findIndex(b=>b.id===id);if(li<0)break;PH.beads.splice(li,1);}
  if(!PH.cursor){const bb=phBoardBounds();PH.cursor={x:bb.cx,z:bb.cz};}
- persistTray();updateStatic();updateSeatHud();SFX.pick();return true;
+ persistTray();updateStatic();updateSeatHud();advanceBeadCoach('color');SFX.pick();return true;
 }
 function phGrabBead(i){const p=PH.beads[i];if(!p)return;phGrabColor(p.id);}
 // Real workflow: you first TIP a handful of beads out of the colour box into the sorting
@@ -1218,7 +1263,7 @@ function phScoopToDish(id){
  for(let j=0;j<amount;j++)PH.beads.push({id,compartment,
    x:b.cx-b.w*.375+compartment*b.w*.25+(Math.random()-.5)*.14,z:b.cz+(Math.random()-.5)*.22,
    y:1.74+j*.016,vx:(Math.random()-.5)*.5,vy:0,vz:(Math.random()-.5)*.4,rest:false});
- PH.bin=null;persistTray();updateStatic();updateSeatHud();SFX.pour();return true;
+ PH.bin=null;persistTray();updateStatic();updateSeatHud();advanceBeadCoach('color');SFX.pour();return true;
 }
 function phPinchFromDish(i){
  const p=PH.beads[i];if(!p)return false;const id=p.id;
@@ -1228,7 +1273,7 @@ function phPinchFromDish(i){
  if(taken<1){phNudge();return false;}
  PH.held={id,count:(PH.held?PH.held.count:0)+taken,fromBoard:false};PH.activeColor=id;PH.pinchAt=performance.now();PH.tool='tweezers';PH.toolEquipped=true;
  if(!PH.cursor){const bb=phBoardBounds();PH.cursor={x:bb.cx,z:bb.cz};}
- updateStatic();updateSeatHud();SFX.pick();return true;
+ updateStatic();updateSeatHud();renderBeadCoach();SFX.pick();return true;
 }
 function phTakeBoardBead(index){const id=board().cells[index];if(!id)return;
  if(PH.held&&PH.held.id!==id){phNudge();return;}
@@ -1324,7 +1369,7 @@ function phPlaceHeldAt(i){
    board().cells[i]=PH.held.id;PH.held.count--;if(PH.held.count<=0)PH.held=null;
  }
  PH.lastPlacedIdx=i;PH.cursor=phPosForIndex(i);
- storeBoard();updateStatic();updateSeatHud();SFX.place();return true;
+ storeBoard();updateStatic();updateSeatHud();advanceBeadCoach('place');SFX.place();return true;
 }
 function phDropBead(x,z){
  if(!PH.toolEquipped)return false;
@@ -1410,7 +1455,7 @@ function phEndPointer(px,py){
    if(PH.toolEquipped&&PH.tool===which){phPutDownTool();return;}   // tapping the held tool puts it back
    if(PH.held)phReturnBead();                                      // switching tools returns any pinch in hand
    PH.tool=which;PH.toolEquipped=true;PH.cursor=phAtHeight(px,py,1.43)||(which==='pen'?phPenRest():phTweezersRest());
-   updateStatic();updateSeatHud();SFX.ui();return;
+   updateStatic();updateSeatHud();advanceBeadCoach('tool');SFX.ui();return;
  }
  if(hit?.type==='drawer'){if(isCollabTable()){toast('合作大桌固定使用 64 × 64 公共画板。');return;}PH.drawerOpen=!PH.drawerOpen;updateStatic();return;}
  if(hit?.type==='boardChoice'){if(isCollabTable()){toast('公共画板尺寸固定，不能由单个玩家更换。');return;}PH.boardOut=true;PH.drawerOpen=false;PH.boardAnimating=.68;phResize(hit.i);updateStatic();return;}
@@ -1847,7 +1892,7 @@ function applyCloudPlayer(state){
  else if(names.includes(hand.board)&&tableBoards[hand.board]?.cells.some(Boolean)){carriedBoard=hand.board;activeTable=hand.board;PH.boardOut=false;}
  else if(restoredDrink){heldDrink=restoredDrink.id;heldOpt={...(restoredDrink.opt||{})};coffeeSips=cloudAmount(restoredDrink.sips,20);heldDrinkSource=['self','staff','ready'].includes(restoredDrink.source)?restoredDrink.source:'self';}
  if(carriedBoard&&state.iron&&state.iron.table===carriedBoard){restoredIronState={...state.iron};ironFinished=!!state.iron.finished;ironProgressValue=Math.max(0,Math.min(1,Number(state.iron.progress)||0));selectedIronProduct=PRODUCT_META[state.iron.product]?state.iron.product:'keychain';}
- updateDrinkStatus();updateCarryBoardStatus();updateCarryProductStatus();updatePaletteQuantity();updateStatic();return true;
+ if(TOUCH_UI)resetRoamView(false);updateDrinkStatus();updateCarryBoardStatus();updateCarryProductStatus();updatePaletteQuantity();updateStatic();return true;
 }
 const NET={id:persistentPlayerId(),peers:new Map(),chan:null,ws:null,url:null,roomUrl:null,retry:null,retryMs:800,stopped:false,last:0,lastHttpState:0,lastPlayerSave:0,lastPlayerSig:'',saveTimer:null,on:false,pollTimer:null,pollBusy:false,pollCount:0,mid:0,seen:new Set(),restoring:true,restored:false,durable:false};
 boardSync=BeadBoardSync.createBoardSync({tables:names,delay:220,now:()=>performance.now(),
@@ -2182,9 +2227,8 @@ function update(dt){
  if(pendingCoffee&&Math.hypot(player.x-COFFEE_POS.x,player.z-COFFEE_POS.z)<2.8){pendingCoffee=false;player.target=null;player.route=[];takeCoffee();return;} // open the café as soon as you reach the counter
  if(pendingBeadStation&&Math.hypot(player.x+12,player.z-14.7)<2.8){pendingBeadStation=false;player.target=null;player.route=[];phWallEnter();return;} // open the bead wall on arrival
  if(pendingStation&&Math.hypot(player.x-12.6,player.z-16)<2.8){pendingStation=false;player.target=null;player.route=[];phAutoIron();return;} // open the ironing station on arrival
- if(dx||dz){const speed=2.7*carryMoveFactor()*dt;let mx,mz;   // drinks remain careful; boards keep normal walking speed and use shake risk instead
-   if(firstPerson){const y=camera.angle;mx=Math.sin(y)*(-dz)-Math.cos(y)*dx;mz=Math.cos(y)*(-dz)+Math.sin(y)*dx;} // W = forward, D = right (camera-relative)
-   else{mx=dx;mz=dz;}
+ if(dx||dz){const speed=2.7*carryMoveFactor()*dt;let mx,mz;   // directions follow the screen in every camera mode
+   const direction=BeadMobileControls.screenRelativeMove(dx,dz,camForward,camRight);mx=direction.x;mz=direction.z;
    const len=Math.hypot(mx,mz)||1,nx=player.x+mx/len*speed,nz=player.z+mz/len*speed;phWalkStep(nx,nz);player.target=null;player.route=[];pendingTable=null;pendingStation=false;pendingBeadStation=false;pendingCoffee=false;moving=true;}
  else if(player.target){const ddx=player.target.x-player.x,ddz=player.target.z-player.z,d=Math.hypot(ddx,ddz);if(d>.09){const s=Math.min(d,3.4*carryMoveFactor()*dt);const nx=player.x+ddx/d*s,nz=player.z+ddz/d*s;if(phWalkStep(nx,nz)){moving=true;}else{player.target=null;player.route=[];pendingTable=null;pendingBeadStation=false;pendingCoffee=false;if(pendingStation){pendingStation=false;toast('请从熨烫间门口进入。');}}}else{player.target=null;if(player.route.length){player.target=player.route.shift();}else if(pendingTable){const t=pendingTable;pendingTable=null;phSit(t);}else if(pendingStation){pendingStation=false;phAutoIron();}else if(pendingBeadStation){pendingBeadStation=false;phWallEnter();}else if(pendingCoffee){pendingCoffee=false;takeCoffee();}}}
  player.x=Math.max(ROOM.minX,Math.min(ROOM.maxX,player.x));player.z=Math.max(ROOM.minZ,Math.min(ROOM.maxZ,player.z));player.walk=moving?Math.min(1,player.walk+.15):Math.max(0,player.walk-.09);
@@ -2195,13 +2239,13 @@ function update(dt){
 // centred, so the far rooms slid off-screen and felt impossible to enter.
  camera.lookX+=(player.x-camera.lookX)*Math.min(1,dt*2.4);camera.lookZ+=(player.z*.80-1.6-camera.lookZ)*Math.min(1,dt*1.5);
 }
-function frame(now){resize();const dt=Math.min((now-last)/1000,.06);last=now;update(dt);stepParticles(dt);if(PH.active)updateSeatHud();calcCamera();drawCarryView();
+function frame(now){resize();const dt=Math.min((now-last)/1000,.06);last=now;update(dt);stepParticles(dt);if(PH.active)updateSeatHud();updateRoomGuide();calcCamera();drawCarryView();
  if(gl&&program){gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.useProgram(program);gl.uniformMatrix4fv(loc.m,false,new Float32Array(drawMatrix));if(loc.cam)gl.uniform3fv(loc.cam,new Float32Array(camPos));drawMesh(glStatic,staticVertexCount);drawShadows();const actor=buildPlayer();buildPeers(actor);phCreateDynamic(actor);gl.bindBuffer(gl.ARRAY_BUFFER,glPlayer);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(actor.data),gl.DYNAMIC_DRAW);drawMesh(glPlayer,actor.count);phDrawReferenceGL();drawParticles();}
  if(fallback2d&&now-lastFallbackPaint>=fallbackFrameInterval){lastFallbackPaint=now;const started=performance.now();drawFallback();const cost=performance.now()-started;fallbackFrameInterval=Math.max(33,Math.min(85,cost*1.75));document.body.dataset.fallbackFrameMs=String(Math.round(fallbackFrameInterval));}
  updateLabels();renderPeerTags();if(!firstFrame){firstFrame=true;document.body.dataset.rendered='1';}requestAnimationFrame(frame);
 }
-function openModal(id){if(activeModal)$(activeModal).classList.add('hidden');activeModal=id;$('modalBack').classList.remove('hidden');$(id).classList.remove('hidden');$('soundToggle')?.classList.add('hidden');$('carryCupHit')?.classList.add('hidden');$('carryBoard')?.classList.add('modal-hidden');$('carryProduct')?.classList.add('modal-hidden');SFX.ui();}
-function closeModal(){if(!activeModal)return;const closing=activeModal;$(activeModal).classList.add('hidden');$('modalBack').classList.add('hidden');activeModal=null;$('soundToggle')?.classList.remove('hidden');$('carryBoard')?.classList.remove('modal-hidden');$('carryProduct')?.classList.remove('modal-hidden');if(closing==='coffee'||closing==='iron')try{markCloudProgress();}catch(_e){}SFX.close();}
+function openModal(id){if(activeModal)$(activeModal).classList.add('hidden');activeModal=id;setRoomNav(false);document.body.classList.add('modal-open');$('modalBack').classList.remove('hidden');$(id).classList.remove('hidden');$('soundToggle')?.classList.add('hidden');$('carryCupHit')?.classList.add('hidden');$('carryBoard')?.classList.add('modal-hidden');$('carryProduct')?.classList.add('modal-hidden');SFX.ui();}
+function closeModal(){if(!activeModal)return;const closing=activeModal;$(activeModal).classList.add('hidden');$('modalBack').classList.add('hidden');activeModal=null;document.body.classList.remove('modal-open');$('soundToggle')?.classList.remove('hidden');$('carryBoard')?.classList.remove('modal-hidden');$('carryProduct')?.classList.remove('modal-hidden');if(closing==='coffee'||closing==='iron')try{markCloudProgress();}catch(_e){}SFX.close();}
 function setTool(name){tool=name;document.querySelectorAll('.tool[data-tool]').forEach(b=>b.classList.toggle('selected',b.dataset.tool===name));$('beadCanvas').style.cursor=name==='pan'?'grab':'crosshair';}
 function selectColor(id){paintColor=id;const s=swatches.find(c=>c.id===id);$('colorSwatch').style.backgroundColor=s.hex;$('colorSwatch').dataset.finish=s.finish;$('colorName').textContent=s.name;const ft=FINISH_META[s.finish]?.tag;$('colorCode').textContent=`${s.id}${ft?' · '+FINISH_META[s.finish].label:''} · 托盘剩余 ${tray[id]||0} 颗`;document.querySelectorAll('.bead-option').forEach(b=>b.classList.toggle('active',b.dataset.color===id));updatePaletteQuantity();}
 function buildPalette(){const root=$('palette');root.innerHTML='';for(const s of swatches){const b=document.createElement('button');b.type='button';b.className='bead-option';b.dataset.color=s.id;b.dataset.finish=s.finish;b.style.background=s.hex;const ft=FINISH_META[s.finish]?.tag;b.title=`${s.name} · ${s.id}${ft?' · '+FINISH_META[s.finish].label:''} · 托盘 ${tray[s.id]||0} 颗`;b.setAttribute('aria-label',`${s.name} ${s.id}`);if(ft){const badge=document.createElement('em');badge.className='finish-badge';badge.textContent=ft[0];b.appendChild(badge);}b.onclick=()=>{selectColor(s.id);setTool('paint');};root.appendChild(b);}selectColor(paintColor);}
@@ -2521,6 +2565,11 @@ function renderCursor(e){
  ghost.title=`${toolLabels[pickupTool]} · ${paintColor} 托盘 ${tray[paintColor]||0} 颗`;
 }
 function wire(){
+ $('roomNavToggle').onclick=()=>setRoomNav($('roomNavPanel').classList.contains('hidden'));
+ $('roomNavClose').onclick=()=>setRoomNav(false);$('roomViewReset').onclick=()=>{setRoomNav(false);resetRoamView(true);SFX.ui();};
+ document.querySelectorAll('[data-room-dest]').forEach(button=>button.onclick=()=>goRoomDestination(button.dataset.roomDest));
+ $('guideHelp').onclick=()=>openModal('help');
+ $('beadCoachSkip').onclick=()=>hideBeadCoach(true);$('beadCoachDone').onclick=()=>hideBeadCoach(true);
  $('wallBtn').onclick=goGallery;
  $('ironStationBtn').onclick=goIronStation;
  $('coffeeStationBtn').onclick=goCoffeeStation;
@@ -2551,6 +2600,7 @@ function wire(){
  $('infoOkay').onclick=closeModal;$('infoClose').onclick=closeModal;
  $('editorClose').onclick=closeModal;$('pickupClose').onclick=closeModal;$('ironClose').onclick=closeModal;
  $('helpBtn').onclick=()=>openModal('help');$('helpClose').onclick=closeModal;$('helpOkay').onclick=closeModal;
+ $('helpTutorial').onclick=()=>{try{localStorage.removeItem(BEAD_COACH_KEY);}catch(_e){}closeModal();if(PH.active)startBeadCoach(true);else{const near=nearestDesk();if(near.t)approach(near.t);toast('正在前往最近的拼豆桌，坐下后会开始分步引导。');}};
  $('nameBtn').onclick=()=>{$('nameInput').value=nickname;openModal('nameModal');};
  $('nameClose').onclick=closeModal;
  $('nameSave').onclick=()=>{const value=$('nameInput').value.trim();if(!value){toast('请输入昵称。');return;}nickname=value.slice(0,16);saveNick();$('displayName').textContent=nickname;closeModal();toast(`欢迎，${nickname}`);};
@@ -2604,9 +2654,9 @@ function wire(){
  const joy=$('touchJoystick'),thumb=$('joystickThumb');
  if(joy&&thumb){let pointerId=null;
   const applyJoy=e=>{const r=joy.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;
-   const dx=e.clientX-cx,dy=e.clientY-cy,d=Math.hypot(dx,dy),scale=d>30?30/d:1,x=dx*scale,y=dy*scale;
+   const dx=e.clientX-cx,dy=e.clientY-cy,d=Math.hypot(dx,dy),scale=d>39?39/d:1,x=dx*scale,y=dy*scale;
    thumb.style.transform=`translate(${x}px,${y}px)`;
-   input.w=y < -8;input.s=y > 8;input.a=x < -8;input.d=x > 8;
+   input.w=y < -7;input.s=y > 7;input.a=x < -7;input.d=x > 7;
   };
   const reset=()=>{pointerId=null;thumb.style.transform='translate(0,0)';for(const k of ['w','a','s','d'])input[k]=false;};
   joy.addEventListener('pointerdown',e=>{if(activeModal)return;e.preventDefault();pointerId=e.pointerId;joy.setPointerCapture(e.pointerId);applyJoy(e);$('microHint')?.classList.add('hint-gone');});
@@ -2635,11 +2685,12 @@ function wire(){
  scene.addEventListener('pointermove',e=>{
  if(e.pointerType==='touch'&&sceneTouchPoints.has(e.pointerId)){sceneTouchPoints.set(e.pointerId,{x:e.clientX,y:e.clientY});if(scenePinch){e.preventDefault();moveScenePinch();return;}}
  if(PH.wall)return;
- if(PH.active){if(!PH.picker){const r=scene.getBoundingClientRect(),px=e.clientX-r.left,py=e.clientY-r.top;if(seatTouchPending?.pointerId===e.pointerId&&Math.hypot(px-seatTouchPending.px,py-seatTouchPending.py)>4){const start=seatTouchPending;clearSeatTouchPending();phBeginPointer(start,start.px,start.py);}phMovePointer(e,px,py);}return;}
+ if(PH.active){if(!PH.picker){const r=scene.getBoundingClientRect(),px=e.clientX-r.left,py=e.clientY-r.top;if(seatTouchPending?.pointerId===e.pointerId&&Math.hypot(px-seatTouchPending.px,py-seatTouchPending.py)>(TOUCH_UI?10:4)){const start=seatTouchPending;clearSeatTouchPending();phBeginPointer(start,start.px,start.py);}phMovePointer(e,px,py);}return;}
  const rect=scene.getBoundingClientRect();hoverScene={x:e.clientX-rect.left,y:e.clientY-rect.top};if(!pointer||pointer.id!==e.pointerId)return;const dx=e.clientX-pointer.x,dy=e.clientY-pointer.y;
-  if(Math.hypot(dx,dy)>7)pointer.dragged=true;
+  if(Math.hypot(dx,dy)>((TOUCH_UI&&e.pointerType==='touch')?14:7))pointer.dragged=true;
   if(pointer.dragged){
-    if(firstPerson){camera.aTarget=pointer.angle+dx*.006;camera.fpLookT=Math.max(-.95,Math.min(.55,pointer.fpLook-dy*.004));} // drag to look around
+    if(TOUCH_UI&&e.pointerType==='touch'){scene.classList.add('dragging');return;}
+    if(firstPerson){camera.aTarget=pointer.angle-dx*.006;camera.fpLookT=Math.max(-.95,Math.min(.55,pointer.fpLook-dy*.004));} // drag right = look right
     else{camera.aTarget=pointer.angle+dx*.005;camera.pTarget=Math.max(.28,Math.min(1.25,pointer.pitch+dy*.004));}
     scene.classList.add('dragging');}
  });
@@ -2652,7 +2703,7 @@ function wire(){
   // Cast the tap ray against furniture and every interactive wall surface.
   const ray=screenRay(px,py);
   let hitTable=null,hitTableT=1e9;
-  for(const t of workTables){const hw=(t.w||3.10)/2,hd=(t.d||2.60)/2,tt=rayAABB(camPos,ray,[t.x-hw,0,t.z-hd],[t.x+hw,1.55,t.z+hd]);if(tt!=null&&tt<hitTableT){hitTableT=tt;hitTable=t;}}
+  for(const t of workTables){const pad=TOUCH_UI ? .42 : 0,hw=(t.w||3.10)/2+pad,hd=(t.d||2.60)/2+pad,tt=rayAABB(camPos,ray,[t.x-hw,0,t.z-hd],[t.x+hw,TOUCH_UI?2.15:1.55,t.z+hd]);if(tt!=null&&tt<hitTableT){hitTableT=tt;hitTable=t;}}
   const stations=[{mn:[10.9,0,-14.6],mx:[16.5,2.0,-6.6],go:goCoffeeStation},   // café counter, machines & barista
                   {mn:[10.4,0,15.6],mx:[16.0,1.6,18.6],go:goIronStation},       // ironing table
                   {mn:[-16.7,0,18.7],mx:[-7.2,4.2,20.4],go:goBeadStation}];      // bead wall

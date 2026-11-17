@@ -10,11 +10,30 @@
   <link rel="stylesheet" href="./src/style.css" />
   <link rel="stylesheet" href="./src/physical.css" />
   <script defer src="./src/board-sync.js"></script>
+  <script defer src="./src/mobile-controls.js"></script>
   <script defer src="./src/app.js"></script>
 </head>
 <body>
 <div class="app" id="app">
   <canvas id="scene" aria-label="可自由探索的 3D 拼豆工作室"></canvas>
+  <button id="roomNavToggle" class="room-nav-toggle" type="button" aria-expanded="false" aria-controls="roomNavPanel"><span>⌖</span><b id="roomZoneText">工作区 · 地图</b></button>
+  <nav id="roomNavPanel" class="room-nav-panel hidden" aria-label="店内导航">
+    <div class="room-nav-head"><div><small>你在</small><strong id="roomZoneTitle">工作区</strong></div><button id="roomNavClose" type="button" aria-label="收起地图">×</button></div>
+    <div class="room-nav-grid">
+      <button type="button" data-room-dest="collab"><span>✦</span>公共大桌</button>
+      <button type="button" data-room-dest="desk"><span>▦</span>找拼豆桌</button>
+      <button type="button" data-room-dest="coffee"><span>☕</span>咖啡角</button>
+      <button type="button" data-room-dest="beads"><span>◉</span>大豆墙</button>
+      <button type="button" data-room-dest="iron"><span>♨</span>熨烫间</button>
+      <button type="button" data-room-dest="wall"><span>▣</span>心愿墙</button>
+    </div>
+    <button id="roomViewReset" class="room-view-reset" type="button">◎ 镜头回正</button>
+  </nav>
+  <button id="guideHelp" class="guide-help" type="button" aria-label="查看玩法教程">？<span>玩法</span></button>
+  <aside id="beadCoach" class="bead-coach hidden" aria-live="polite">
+    <div class="bead-coach-copy"><small id="beadCoachCount">新手引导 1/4</small><strong id="beadCoachTitle">先拿起工具</strong><p id="beadCoachText">点桌上的青绿色摇摇笔；也可以选择左侧的镊子。</p></div>
+    <button id="beadCoachSkip" type="button">跳过</button><button id="beadCoachDone" class="hidden" type="button">知道了</button>
+  </aside>
   <div class="gradient-bottom"></div>
   <div id="diegeticLabels" aria-hidden="true"></div>
   <button id="physicalStand" type="button" aria-label="起身离开座位" title="起身">↶</button>
@@ -215,8 +234,9 @@
   <section class="info-modal hidden" id="info" role="dialog" aria-modal="true" aria-label="多人心愿墙说明"><button class="close-button float-close" id="infoClose" aria-label="关闭">×</button><div class="info-hero">✦ 多人拼豆心愿墙 ✦</div><div class="info-body"><div class="eyebrow dark">THE SHARED WISH WALL</div><h2>每一面墙，都可以挂上心愿。</h2><p>完成熨烫并选择配件后，把成品亲自拿到任意墙面前，点击想挂的位置。空手点击墙上的成品可以取下来，之后再挂到其他墙面。作品允许互相叠放覆盖，所有位置、取下状态和手持状态都会保存到云端。</p><p id="galleryCount" class="gallery-counter"></p><button class="primary-button" id="infoOkay">返回工作室 <span>↗</span></button></div></section>
   <section class="info-modal help-modal hidden" id="help" role="dialog" aria-modal="true" aria-label="简单操作">
     <button class="close-button float-close" id="helpClose" aria-label="关闭">×</button>
-    <div class="info-body"><h2>在小店里走走</h2>
-      <div class="tiny-gesture-list"><div><span>↗</span> 点击桌子、咖啡角或豆盒</div><div><span>✧</span> 靠近物件，出现小提示</div><div><span>⌁</span> WASD 移动 · 拖动画面看四周</div></div>
+    <div class="info-body"><h2>第一次来怎么玩</h2>
+      <div class="tiny-gesture-list"><div><span>◉</span><b>移动</b> 手机拖左下摇杆，方向始终对应屏幕；双指缩放</div><div><span>⌖</span><b>找路</b> 点左上角地图，可以自动前往店内区域</div><div><span>✎</span><b>拼豆</b> 拿工具 → 选颜色 → 点或拖动画板放豆</div><div><span>♨</span><b>完成</b> 拿起底板去熨烫，再把成品挂到任意墙上</div></div>
+      <button class="outline-button wide" id="helpTutorial">重新播放拼豆引导</button>
       <button class="primary-button" id="helpOkay">回到店里</button>
     </div>
   </section>

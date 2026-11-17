@@ -35,12 +35,19 @@ test('serves the game and persists the complete shared room', async t => {
   const homeHtml = await home.text();
   assert.match(homeHtml, /mobileSceneZoom/);
   assert.match(homeHtml, /src\/board-sync\.js/);
+  assert.match(homeHtml, /src\/mobile-controls\.js/);
+  assert.match(homeHtml, /id="roomNavToggle"/);
+  assert.match(homeHtml, /id="beadCoach"/);
+  assert.match(homeHtml, /id="guideHelp"/);
   assert.match(homeHtml, /空手长按画板，可清空拼豆板/);
   assert.match(homeHtml, /id="carryCupHit"/);
   assert.doesNotMatch(homeHtml, /id="carryDrink"/);
   const boardSyncSource = await fetch(`${running.origin}/src/board-sync.js`);
   assert.equal(boardSyncSource.status, 200);
   assert.match(await boardSyncSource.text(), /createBoardSync/);
+  const mobileControlsSource = await fetch(`${running.origin}/src/mobile-controls.js`);
+  assert.equal(mobileControlsSource.status, 200);
+  assert.match(await mobileControlsSource.text(), /screenRelativeMove/);
 
   const messages = [
     { t: 'board', id: 'p-test-user', mid: 'board-1', table: 'A', size: 16, cells: 'A'.repeat(256), revision: 1 },
