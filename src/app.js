@@ -121,10 +121,10 @@ function gradientRank(a,b){const A=hexToHsl(a.hex),B=hexToHsl(b.hex),na=A[1]<.12
  if(na&&nb)return B[2]-A[2];           // neutrals ordered light→dark
  if(Math.abs(A[0]-B[0])>.5)return A[0]-B[0]; // chromatic ordered by hue (red→orange→…→violet)
  return B[2]-A[2];}                    // same hue: lighter tint first
-// Matte milk-tea palette: warm grey walls, blue-grey ceiling, walnut-oat floor and muted
-// sage / dusty-rose furniture reduce large luminous areas without making the room muddy.
+// Warm cream-and-timber palette: bright almond walls, honey-oak flooring and gentle
+// butter / lake-blue / apricot accents feel cheerful without using pure white or neon colour.
 // Real fuse-bead colours stay exact so completed artwork remains the visual focus.
-const CUTE_SCENE={ink:'#676c78',paper:'#f2ece5',ceiling:'#d7dfe1',wall:'#e8ddd3',wallAlt:'#e3d9d4',floor:'#d0bea9',floorAlt:'#d7c8b6',trim:'#c4ad9d',cream:'#e6d9cd',tan:'#cbb39c',brown:'#a78d7e',yellow:'#d6bb88',blue:'#a8bec8',pink:'#d3b4c0',purple:'#beb6cb',mint:'#aec5b8',peach:'#dbc0b4',green:'#91ab9d'};
+const CUTE_SCENE={ink:'#766d6b',paper:'#fff8ed',ceiling:'#f1e8dc',wall:'#f7eee2',wallAlt:'#f3e4da',floor:'#dec7aa',floorAlt:'#e5d2b8',trim:'#cdb08f',cream:'#f2e2cf',tan:'#dabd99',brown:'#ad8a6d',yellow:'#e6c875',blue:'#b5d1d0',pink:'#e6c0c3',purple:'#cec2d7',mint:'#b9d2bf',peach:'#e9c7b5',green:'#94b69f'};
 const CUTE_BEAD_HEX=new Set(swatches.flatMap(s=>[s.hex,glHex(s.id)]).map(v=>v.toUpperCase()));
 const CUTE_SCENE_HEX=new Set(Object.values(CUTE_SCENE).map(v=>v.toUpperCase()));
 function cuteSceneColor(hex){
@@ -132,7 +132,7 @@ function cuteSceneColor(hex){
  const key=hex.toUpperCase();if(CUTE_BEAD_HEX.has(key)||CUTE_SCENE_HEX.has(key))return hex;
  const [h,s,l]=hexToHsl(hex);
  if(l<.22)return CUTE_SCENE.ink;
- if(s<.11){if(l<.42)return'#8f9098';if(l<.72)return'#bdb8b5';if(l<.90)return CUTE_SCENE.trim;return CUTE_SCENE.paper;}
+ if(s<.11){if(l<.42)return'#8e8581';if(l<.72)return'#bdb1aa';if(l<.90)return CUTE_SCENE.trim;return CUTE_SCENE.paper;}
  if(l>.91)return CUTE_SCENE.paper;
  if(h<18||h>=338)return l<.44?CUTE_SCENE.brown:(l>.78?CUTE_SCENE.peach:CUTE_SCENE.pink);
  if(h<48)return l<.44?CUTE_SCENE.brown:(s>.43?CUTE_SCENE.yellow:CUTE_SCENE.tan);
@@ -1689,7 +1689,7 @@ function buildStatic(){
  // Wide, flat, low-contrast floor planks: thin high-contrast ridges shimmer into noise at
  // low pixel resolution, so keep the floor simple and clean (Stardew-style crisp pixels).
  for(let i=0;i<20;i++)m.box(-16.3+i*1.72,-.02,1,1.72,.012,41.3,i%2?CUTE_SCENE.floorAlt:CUTE_SCENE.floor);
- if(!PH.active)m.box(0,6.72,1,34.7,.30,41.5,CUTE_SCENE.ceiling);   // cool powder-blue ceiling, hidden while seated
+ if(!PH.active)m.box(0,6.72,1,34.7,.30,41.5,CUTE_SCENE.ceiling);   // quiet almond ceiling, hidden while seated
  m.box(0,3.36,-19.72,34.6,6.8,.30,CUTE_SCENE.wall);
  m.box(0,3.36,21.6,34.6,6.8,.30,CUTE_SCENE.wallAlt);   // slightly blush rear wallpaper keeps the room readable
  m.box(-17.04,3.3,1,.30,6.75,41.5,CUTE_SCENE.wall);
@@ -1997,16 +1997,16 @@ function prepareGL(){
   +'vColor=aColor*(.91+light*.09);'
   +'vec4 p=uMatrix*vec4(aPos+N*uOutline,1.);gl_Position=p;vDepth=p.w;}';
  const frag='precision mediump float;uniform float uInkPass;varying vec3 vColor;varying float vDepth;'
-  +'void main(){if(uInkPass>.5){gl_FragColor=vec4(.404,.424,.471,1.);return;}'
-  +'vec3 c=vColor;float l=dot(c,vec3(.299,.587,.114));c=mix(vec3(l),c,.82)*.96;'
-  +'vec3 fog=vec3(.922,.902,.875);float f=clamp((vDepth-58.)/130.,0.,.055);c=mix(c,fog,f);'
+  +'void main(){if(uInkPass>.5){gl_FragColor=vec4(.463,.427,.420,1.);return;}'
+  +'vec3 c=vColor;float l=dot(c,vec3(.299,.587,.114));c=mix(vec3(l),c,.92);'
+  +'vec3 fog=vec3(.969,.937,.894);float f=clamp((vDepth-58.)/130.,0.,.055);c=mix(c,fog,f);'
   +'gl_FragColor=vec4(c,1.);}';
  program=gl.createProgram();gl.attachShader(program,compileShader(gl,gl.VERTEX_SHADER,vert));gl.attachShader(program,compileShader(gl,gl.FRAGMENT_SHADER,frag));gl.linkProgram(program);
  if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));gl.useProgram(program);
  loc={p:gl.getAttribLocation(program,'aPos'),n:gl.getAttribLocation(program,'aNormal'),c:gl.getAttribLocation(program,'aColor'),m:gl.getUniformLocation(program,'uMatrix'),cam:gl.getUniformLocation(program,'uCam'),outline:gl.getUniformLocation(program,'uOutline'),ink:gl.getUniformLocation(program,'uInkPass')};
  // Separate soft-shadow program: flat black discs with per-vertex alpha, blended onto the floor.
  const sv='attribute vec3 aPos;attribute float aA;uniform mat4 uMatrix;varying float vA;void main(){gl_Position=uMatrix*vec4(aPos,1.);vA=aA;}';
- const sf='precision mediump float;varying float vA;void main(){gl_FragColor=vec4(.404,.424,.471,vA);}';
+ const sf='precision mediump float;varying float vA;void main(){gl_FragColor=vec4(.463,.427,.420,vA);}';
  shadowProg=gl.createProgram();gl.attachShader(shadowProg,compileShader(gl,gl.VERTEX_SHADER,sv));gl.attachShader(shadowProg,compileShader(gl,gl.FRAGMENT_SHADER,sf));gl.linkProgram(shadowProg);
  shadowLoc={p:gl.getAttribLocation(shadowProg,'aPos'),a:gl.getAttribLocation(shadowProg,'aA'),m:gl.getUniformLocation(shadowProg,'uMatrix')};
  // Particle program: soft camera-facing discs with per-vertex RGBA (steam, dust).
@@ -2015,7 +2015,7 @@ function prepareGL(){
  partProg=gl.createProgram();gl.attachShader(partProg,compileShader(gl,gl.VERTEX_SHADER,pv));gl.attachShader(partProg,compileShader(gl,gl.FRAGMENT_SHADER,pf));gl.linkProgram(partProg);
  partLoc={p:gl.getAttribLocation(partProg,'aPos'),c:gl.getAttribLocation(partProg,'aCol'),m:gl.getUniformLocation(partProg,'uMatrix')};
  glParts=gl.createBuffer();
- gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(.922,.902,.875,1);
+ gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(.969,.937,.894,1);
  glStatic=gl.createBuffer();glPlayer=gl.createBuffer();glShadowStatic=gl.createBuffer();glShadowPlayer=gl.createBuffer();
  phSetupReferenceGL();updateStatic();updateStaticShadows();
 }
@@ -2720,7 +2720,7 @@ function drawFallback(){
  if(!ctx2d)return;
  const c=ctx2d,s=renderScale,w=layout.width,h=layout.height;
  c.setTransform(s,0,0,s,0,0);c.imageSmoothingEnabled=false;c.lineJoin='round';c.lineCap='round';c.clearRect(0,0,w,h);
- // Canvas2D receives the same cool-ceiling / warm-wall separation as WebGL.
+ // Canvas2D receives the same almond-ceiling / cream-wall separation as WebGL.
  const grad=c.createLinearGradient(0,0,w,h);grad.addColorStop(0,CUTE_SCENE.ceiling);grad.addColorStop(1,CUTE_SCENE.wall);c.fillStyle=grad;c.fillRect(0,0,w,h);
  // Canvas has no depth buffer. Queue every projected primitive and paint far-to-near so
  // furniture and hand-held tools do not leak through one another as the camera moves.
