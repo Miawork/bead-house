@@ -124,7 +124,7 @@ function gradientRank(a,b){const A=hexToHsl(a.hex),B=hexToHsl(b.hex),na=A[1]<.12
 // Powdery room palette: the cool ceiling, warm wallpaper and oat floor stay visibly
 // separate without falling back to harsh outlines or saturated toy colours. Real fuse-bead
 // colours are excluded below so finished artwork remains the visual focus of the studio.
-const CUTE_SCENE={ink:'#6f788a',paper:'#fffaf4',ceiling:'#e8f0f3',wall:'#f5ede5',wallAlt:'#f1e8e2',floor:'#e7d8c6',floorAlt:'#ede1d2',trim:'#dbc8ba',cream:'#f3e8dc',tan:'#d8c0aa',brown:'#b99d8d',yellow:'#ead6a8',blue:'#bfd3df',pink:'#e7cad7',purple:'#d2cbe1',mint:'#c5dcd0',peach:'#edd5ca',green:'#a9c3b5'};
+const CUTE_SCENE={ink:'#687387',paper:'#fffaf4',ceiling:'#e3edf1',wall:'#f5ede5',wallAlt:'#efe5df',floor:'#e3d3c0',floorAlt:'#eadcca',trim:'#d7c2b3',cream:'#f3e8dc',tan:'#d8c0aa',brown:'#b99d8d',yellow:'#ead6a8',blue:'#bfd3df',pink:'#e7cad7',purple:'#d2cbe1',mint:'#c5dcd0',peach:'#edd5ca',green:'#a9c3b5'};
 const CUTE_BEAD_HEX=new Set(swatches.flatMap(s=>[s.hex,glHex(s.id)]).map(v=>v.toUpperCase()));
 const CUTE_SCENE_HEX=new Set(Object.values(CUTE_SCENE).map(v=>v.toUpperCase()));
 function cuteSceneColor(hex){
@@ -1997,16 +1997,16 @@ function prepareGL(){
   +'vColor=aColor*(.91+light*.09);'
   +'vec4 p=uMatrix*vec4(aPos+N*uOutline,1.);gl_Position=p;vDepth=p.w;}';
  const frag='precision mediump float;uniform float uInkPass;varying vec3 vColor;varying float vDepth;'
-  +'void main(){if(uInkPass>.5){gl_FragColor=vec4(.435,.471,.541,1.);return;}'
-  +'vec3 c=vColor;float l=dot(c,vec3(.299,.587,.114));c=mix(vec3(l),c,.84);'
-  +'vec3 fog=vec3(.976,.965,.945);float f=clamp((vDepth-38.)/92.,0.,.16);c=mix(c,fog,f);'
+  +'void main(){if(uInkPass>.5){gl_FragColor=vec4(.408,.451,.529,1.);return;}'
+  +'vec3 c=vColor;float l=dot(c,vec3(.299,.587,.114));c=mix(vec3(l),c,.88);'
+  +'vec3 fog=vec3(.976,.965,.945);float f=clamp((vDepth-38.)/92.,0.,.14);c=mix(c,fog,f);'
   +'gl_FragColor=vec4(c,1.);}';
  program=gl.createProgram();gl.attachShader(program,compileShader(gl,gl.VERTEX_SHADER,vert));gl.attachShader(program,compileShader(gl,gl.FRAGMENT_SHADER,frag));gl.linkProgram(program);
  if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));gl.useProgram(program);
  loc={p:gl.getAttribLocation(program,'aPos'),n:gl.getAttribLocation(program,'aNormal'),c:gl.getAttribLocation(program,'aColor'),m:gl.getUniformLocation(program,'uMatrix'),cam:gl.getUniformLocation(program,'uCam'),outline:gl.getUniformLocation(program,'uOutline'),ink:gl.getUniformLocation(program,'uInkPass')};
  // Separate soft-shadow program: flat black discs with per-vertex alpha, blended onto the floor.
  const sv='attribute vec3 aPos;attribute float aA;uniform mat4 uMatrix;varying float vA;void main(){gl_Position=uMatrix*vec4(aPos,1.);vA=aA;}';
- const sf='precision mediump float;varying float vA;void main(){gl_FragColor=vec4(.435,.471,.541,vA);}';
+ const sf='precision mediump float;varying float vA;void main(){gl_FragColor=vec4(.408,.451,.529,vA);}';
  shadowProg=gl.createProgram();gl.attachShader(shadowProg,compileShader(gl,gl.VERTEX_SHADER,sv));gl.attachShader(shadowProg,compileShader(gl,gl.FRAGMENT_SHADER,sf));gl.linkProgram(shadowProg);
  shadowLoc={p:gl.getAttribLocation(shadowProg,'aPos'),a:gl.getAttribLocation(shadowProg,'aA'),m:gl.getUniformLocation(shadowProg,'uMatrix')};
  // Particle program: soft camera-facing discs with per-vertex RGBA (steam, dust).
@@ -2027,11 +2027,11 @@ function pushShadowDisc(arr,x,z,r,strength,squashZ){
 }
 function buildStaticShadows(){
  const a=[];
- for(const t of positions)pushShadowDisc(a,t.x,t.z,2.15,.11,.72);      // worktables
- pushShadowDisc(a,COLLAB_TABLE.x,COLLAB_TABLE.z,3.65,.12,.68);        // communal worktable
- pushShadowDisc(a,-12,17.6,3.1,.09,.5);                              // bead wall base
- pushShadowDisc(a,12.15,-10.93,2.3,.10,.7);                         // café counter
- pushShadowDisc(a,12.6,16.4,1.9,.10,.8);                           // ironing station
+ for(const t of positions)pushShadowDisc(a,t.x,t.z,2.15,.12,.72);      // worktables
+ pushShadowDisc(a,COLLAB_TABLE.x,COLLAB_TABLE.z,3.65,.14,.68);        // communal worktable
+ pushShadowDisc(a,-12,17.6,3.1,.10,.5);                              // bead wall base
+ pushShadowDisc(a,12.15,-10.93,2.3,.11,.7);                         // café counter
+ pushShadowDisc(a,12.6,16.4,1.9,.11,.8);                           // ironing station
  return a;
 }
 function updateStaticShadows(){if(!gl||!glShadowStatic)return;const a=buildStaticShadows();gl.bindBuffer(gl.ARRAY_BUFFER,glShadowStatic);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(a),gl.STATIC_DRAW);shadowStaticCount=a.length/4;}
@@ -2042,7 +2042,7 @@ function drawShadows(){
  const bind=(buf,count)=>{gl.bindBuffer(gl.ARRAY_BUFFER,buf);gl.vertexAttribPointer(shadowLoc.p,3,gl.FLOAT,false,16,0);gl.vertexAttribPointer(shadowLoc.a,1,gl.FLOAT,false,16,12);gl.enableVertexAttribArray(shadowLoc.p);gl.enableVertexAttribArray(shadowLoc.a);gl.drawArrays(gl.TRIANGLES,0,count);};
  if(!PH.active&&!PH.wall&&shadowStaticCount)bind(glShadowStatic,shadowStaticCount);
  // moving player shadow
- if(!PH.active&&!PH.wall&&!firstPerson){const pa=[];pushShadowDisc(pa,player.x,player.z,.62+player.walk*.05,.13,.78);gl.bindBuffer(gl.ARRAY_BUFFER,glShadowPlayer);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(pa),gl.DYNAMIC_DRAW);bind(glShadowPlayer,pa.length/4);}
+ if(!PH.active&&!PH.wall&&!firstPerson){const pa=[];pushShadowDisc(pa,player.x,player.z,.62+player.walk*.05,.15,.78);gl.bindBuffer(gl.ARRAY_BUFFER,glShadowPlayer);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(pa),gl.DYNAMIC_DRAW);bind(glShadowPlayer,pa.length/4);}
  gl.depthMask(true);gl.disable(gl.BLEND);gl.enable(gl.CULL_FACE);gl.useProgram(program);
 }
 // Ambient particle life: café steam, iron steam, held-drink steam, drifting dust motes.
@@ -2086,7 +2086,7 @@ function drawParticles(){
 function updateStatic(){if(!gl)return;const m=buildStatic();gl.bindBuffer(gl.ARRAY_BUFFER,glStatic);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(m.data),gl.STATIC_DRAW);staticVertexCount=m.count;}
 function drawMesh(buffer,count){
  gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.vertexAttribPointer(loc.p,3,gl.FLOAT,false,36,0);gl.vertexAttribPointer(loc.n,3,gl.FLOAT,false,36,12);gl.vertexAttribPointer(loc.c,3,gl.FLOAT,false,36,24);gl.enableVertexAttribArray(loc.p);gl.enableVertexAttribArray(loc.n);gl.enableVertexAttribArray(loc.c);
- gl.cullFace(gl.FRONT);gl.depthMask(false);gl.uniform1f(loc.outline,.016);gl.uniform1f(loc.ink,1);gl.drawArrays(gl.TRIANGLES,0,count);
+ gl.cullFace(gl.FRONT);gl.depthMask(false);gl.uniform1f(loc.outline,.018);gl.uniform1f(loc.ink,1);gl.drawArrays(gl.TRIANGLES,0,count);
  gl.depthMask(true);gl.cullFace(gl.BACK);gl.uniform1f(loc.outline,0);gl.uniform1f(loc.ink,0);gl.drawArrays(gl.TRIANGLES,0,count);
 }
 function resize(){const oldAspect=layout.aspect;layout.width=scene.clientWidth;layout.height=scene.clientHeight;layout.aspect=layout.width/Math.max(1,layout.height);
