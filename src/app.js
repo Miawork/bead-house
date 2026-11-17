@@ -129,7 +129,7 @@ const tableBoards={};
 let boardSync=null;
 let gallery=[];
 let activeTable='A',paintColor='C-06',tool='paint',undo=[],redo=[];
-let painting=false,movedStroke=false,rightErase=false,panGesture=null,strokeLast=-1;
+let painting=false,movedStroke=false,rightErase=false,panGesture=null,strokeLast=-1,strokeChanges=null;
 let zoom=1,panX=0,panY=0;
 let beadBack=document.createElement('canvas'),beadBackCtx=beadBack.getContext('2d',{alpha:false});
 let boardRaf=0;
@@ -469,10 +469,6 @@ function loadProject(id,index){
 }
 for(let i=0;i<names.length;i++)tableBoards[names[i]]=loadProject(names[i],i);
 tableBoards[COLLAB_ID]={size:64,cells:Array(64*64).fill(null)};
-let collabShadow=packCells(tableBoards[COLLAB_ID].cells),collabRevision=0;
-const collabPendingCells=new Map();
-const collabQueuedCells=new Map();
-let collabFlushTimer=null;
 function galleryHash(value){let h=2166136261;for(let i=0;i<value.length;i++){h^=value.charCodeAt(i);h=Math.imul(h,16777619);}return(h>>>0).toString(36);}
 function galleryClamp(value,min,max,fallback){const n=Number(value);return Number.isFinite(n)?Math.max(min,Math.min(max,n)):fallback;}
 const WALL_SURFACES=[
@@ -514,7 +510,8 @@ gallery=loadGallery();
 let nickname='游客小豆';try{nickname=localStorage.getItem('bead-house.v1.nickname')||nickname;}catch(_e){}$('displayName').textContent=nickname;
 function board(){return tableBoards[activeTable];}
 function current(){return board().cells;}
-function storeBoard(tableId=activeTable){const b=tableBoards[tableId];if(!b)return false;const pixels=packCells(b.cells);try{if(tableId===COLLAB_ID)netSendCollabChanges(pixels);else netMarkBoardChanged(tableId);}catch(_e){}try{localStorage.setItem('bead-house.v5.table'+tableId,JSON.stringify({size:b.size,pixels}));return true;}catch(_e){toast('本地空间不足，请先导出 PNG 备份。');return false;}}
+function storeBoard(tableId=activeTable){const b=tableBoards[tableId];if(!b)return false;const pixels=packCells(b.cells);try{netMarkBoardChanged(tableId);}catch(_e){}try{localStorage.setItem('bead-house.v5.table'+tableId,JSON.stringify({size:b.size,pixels}));return true;}catch(_e){toast('本地空间不足，请先导出 PNG 备份。');return false;}}
+function replaceSharedBoard(tableId=activeTable){const b=tableBoards[tableId];if(!b)return false;const pixels=packCells(b.cells);try{boardSync?.replace(tableId);}catch(_e){}try{localStorage.setItem('bead-house.v5.table'+tableId,JSON.stringify({size:b.size,pixels}));return true;}catch(_e){return false;}}
 function storeGallery(){try{localStorage.setItem('bead-house.v2.gallery',JSON.stringify(gallery));return true;}catch(_e){toast('展示墙本地保存失败，请尝试删除较大作品。');return false;}}
 function saveNick(){try{localStorage.setItem('bead-house.v1.nickname',nickname);}catch(_e){}try{markCloudProgress();}catch(_e){}}
 // Reference images belong to each desk and are never written to the physical bead board.
@@ -529,7 +526,7 @@ const patterns=[
 function samplePreview(index){const c=document.createElement('canvas');c.width=c.height=256;const ctx=c.getContext('2d');const tiles=getSample(index,32);ctx.fillStyle='#fff7ed';ctx.fillRect(0,0,256,256);for(let y=0;y<32;y++)for(let x=0;x<32;x++){const id=tiles[y*32+x];if(id){ctx.fillStyle=colorLookup[id];ctx.fillRect(x*8,y*8,8,8);}}return c;}
 function imageForReference(ref){if(!ref)return null;if(ref.kind==='template')return samplePreview(ref.sample);const img=new Image();img.src=ref.data;img.onload=()=>{if(activeModal==='editor')drawViewport();};return img;}
 function buildPatterns(){const root=$('patternGrid');root.textContent='';patterns.forEach((item,i)=>{const button=document.createElement('button');button.type='button';button.className='pattern-card';const image=samplePreview(item.sample);image.setAttribute('aria-hidden','true');const title=document.createElement('strong');title.textContent=item.name;const detail=document.createElement('small');detail.textContent=item.desc;button.append(image,title,detail);button.onclick=()=>choosePattern(item);root.appendChild(button);});}
-function openPatternPicker(id){activeTable=id;const ref=referenceByTable[id];$('patternDeskLabel').textContent=`${id} 号桌 · ${board().size}×${board().size} 空白拼豆板`;
+function openPatternPicker(id){activeTable=id;const ref=referenceByTable[id];$('patternDeskLabel').textContent=`${id} 号多人桌 · ${board().size}×${board().size} 共享拼豆板`;
  $('patternSaved').classList.toggle('hidden',!ref);$('savedPatternName').textContent=ref?`继续参考：${ref.name||'上次选择的图片'}`:'';
  $('patternFile').value='';openModal('pattern');}
 function choosePattern(item){referenceByTable[activeTable]={kind:'template',sample:item.sample,name:item.name};delete referenceCanvases[activeTable];persistReference(activeTable);openEditor(activeTable);toast(`参考图 · ${item.name}`);}
@@ -703,7 +700,7 @@ function resetRoamView(notify=true){
 }
 let lastRoomZone='';
 function currentRoomZone(){
- if(PH.active)return isCollabTable()?'公共大桌':'拼豆桌';if(PH.wall)return'大豆墙';
+ if(PH.active)return isCollabTable()?'公共大桌':`${activeTable}号多人桌`;if(PH.wall)return'大豆墙';
  if(player.x>9.1&&player.z>9.6)return'熨烫间';if(player.x>9&&player.z<-5.8)return'咖啡角';
  if(player.x<-7&&player.z>13.6)return'大豆墙';if(Math.hypot(player.x-COLLAB_TABLE.x,player.z-COLLAB_TABLE.z)<5.2)return'公共大桌区';
  if(player.z<-14.5)return'心愿展示墙';return'拼豆工作区';
@@ -833,7 +830,8 @@ function phSit(t){
   fpSavedYaw=camera.angle;phResetDeskView();document.body.classList.add('desk-focused');
   phSyncBeads();updateStatic();updateSeatHud();
   startBeadCoach(false);
-  if(t.collab)toast('已加入公共大作品。每一颗豆都会实时同步并保存，其他玩家可以同时一起拼。');
+  const people=1+[...NET.peers.values()].filter(peer=>peer.seat===activeTable).length;
+  toast(t.collab?`已加入公共大作品，当前 ${people} 人共创。每一颗豆都会实时同步并保存。`:`已加入 ${activeTable} 号多人桌，当前 ${people} 人共创。大家可以同时在不同位置放豆。`);
 }
 function phStand(){if(PH.wall){phWallExit();return;}if(!PH.active)return;
   if(PH.held)phReturnBead();phReturnLoader();PH.active=false;PH.table=null;PH.bin=null;PH.pointer=null;PH.toolEquipped=false;PH.penEquipped=false;
@@ -1306,13 +1304,7 @@ function phPutDownTool(){if(PH.held)phReturnBead();PH.toolEquipped=false;PH.penE
 // Diegetic clear: press-and-hold the board with an EMPTY hand to tip it and pour every bead
 // off into the sorting dish. No text button — you physically grab the board and dump it.
 function phDumpBoard(){
- if(!PH.active)return;if(isCollabTable()){phNudge();toast('公共大桌不能整板清空；每个人可以逐颗调整共同作品。');return;}const cells=board().cells,filled=cells.filter(Boolean),n=filled.length;
- if(n===0){phNudge();return;}
- const b=phTrayBounds(),room=Math.max(0,54-PH.beads.length),spill=Math.min(room,n,40);
- for(let j=0;j<spill;j++){const id=filled[(j*7)%filled.length],compartment=swatches.findIndex(s=>s.id===id)%4;
-   PH.beads.push({id,compartment,x:b.cx-b.w*.375+compartment*b.w*.25+(Math.random()-.5)*.16,z:b.cz+(Math.random()-.5)*.24,y:1.92+j*.01,vx:(Math.random()-.5)*.75,vy:0,vz:(Math.random()-.5)*.6,rest:false});}
- board().cells=cells.map(()=>null);PH.seatIndex=null;PH.lastPlacedIdx=-1;
- storeBoard();updateStatic();updateSeatHud();SFX.pour();toast(`哗啦——把 ${n} 颗豆都倒进分装盒了，板子清空。`);}
+ if(!PH.active)return;phNudge();toast('这是多人共享画板，不能整板清空；可以逐颗调整，避免误删其他人的进度。');}
 let seatHudSig='';
 function updateSeatHud(){
  const hud=$('seatHud');if(!hud)return;
@@ -1321,8 +1313,8 @@ function updateSeatHud(){
  const inkId=isPen?PH.activeColor:(PH.held?PH.held.id:null);
  const cnt=isPen?(inkId?(tray[inkId]||0):0):(PH.held?PH.held.count:0);
  const gsel=PH.grabAll?'all':String(PH.grabCount);
- const deskDrink=tableDrinks[activeTable],drinkSig=heldDrink?`hand:${heldDrink}:${coffeeSips}`:deskDrink?`desk:${deskDrink.id}:${deskDrink.sips}`:'',filledCount=board().cells.reduce((sum,id)=>sum+(id?1:0),0),hasWork=filledCount>0,collaborative=isCollabTable();
- const collaborators=collaborative?1+[...NET.peers.values()].filter(peer=>peer.seat===COLLAB_ID).length:0;
+ const deskDrink=tableDrinks[activeTable],drinkSig=heldDrink?`hand:${heldDrink}:${coffeeSips}`:deskDrink?`desk:${deskDrink.id}:${deskDrink.sips}`:'',filledCount=board().cells.reduce((sum,id)=>sum+(id?1:0),0),hasWork=filledCount>0,publicLarge=isCollabTable();
+ const collaborators=1+[...NET.peers.values()].filter(peer=>peer.seat===activeTable).length;
  const sig=(PH.toolEquipped?PH.tool:'')+'|'+inkId+'|'+cnt+'|'+gsel+'|'+(PH.beads.length>0)+'|'+drinkSig+'|'+hasWork+'|'+collaborators+'|'+filledCount;
  if(sig===seatHudSig)return;seatHudSig=sig;hud.classList.remove('hidden');
  document.querySelectorAll('#seatHud [data-grab]').forEach(b=>{b.classList.toggle('on',b.dataset.grab===gsel);b.style.opacity=isPen?'.4':'';});
@@ -1336,9 +1328,8 @@ function updateSeatHud(){
  $('seatReturn').disabled=!PH.held;
  const drinkAction=$('seatDrinkAction');if(drinkAction){drinkAction.classList.toggle('hidden',!heldDrink&&!deskDrink);drinkAction.disabled=!!heldDrink&&!!deskDrink;
   drinkAction.textContent=heldDrink?'饮料放桌上':deskDrink?'拿起桌上饮料':'饮料';}
- const boardAction=$('seatBoardAction');if(boardAction){boardAction.classList.toggle('hidden',!hasWork||collaborative);boardAction.textContent=heldDrink?'先把饮料放桌上':'拿起拼好的底板';}
- const clearHint=$('seatClearHint');if(clearHint)clearHint.classList.toggle('hidden',!hasWork||collaborative);
- const collabHint=$('seatCollabHint');if(collabHint){collabHint.classList.toggle('hidden',!collaborative);collabHint.innerHTML=`<span>✦</span>公共作品 ${filledCount}/${board().cells.length} · ${collaborators} 人同桌`;}
+ const boardAction=$('seatBoardAction');if(boardAction){boardAction.classList.toggle('hidden',!hasWork||publicLarge);boardAction.textContent=heldDrink?'先把饮料放桌上':'拿起多人完成的底板';}
+ const collabHint=$('seatCollabHint');if(collabHint){collabHint.classList.remove('hidden');collabHint.innerHTML=publicLarge?`<span>✦</span>公共大作品 ${filledCount}/${board().cells.length} · ${collaborators} 人共创`:`<span>✦</span>${activeTable} 号多人桌 ${filledCount}/${board().cells.length} · ${collaborators} 人共创`;}
 }
 // Tactile seat: a freshly-placed bead is skipped in the static bake and drawn in
 // the per-frame dynamic buffer so it visibly descends onto the peg, squashes and
@@ -1468,6 +1459,7 @@ function phTapIfHolding(px,py){const p=phAtHeight(px,py,1.43);if(!p)return;
  if(PH.held){if(phOnBoard(p.x,p.z))phDropBead(p.x,p.z);else phReturnBead();}
 }
 function phResize(n){if(isCollabTable()){toast('公共画板尺寸固定，不能由单个玩家更换。');return;}if(!PH_SIZES.includes(n))return;const old=board();if(n===old.size)return;
+ if(old.cells.some(Boolean)){toast('多人桌已有共同作品，不能单方面更换底板；完成并取走作品后再选择尺寸。');return;}
  const next=Array(n*n).fill(null),o=Math.floor((n-old.size)/2);
  for(let y=0;y<old.size;y++)for(let x=0;x<old.size;x++){
  const nx=x+o,ny=y+o,id=old.cells[y*old.size+x];if(nx>=0&&nx<n&&ny>=0&&ny<n)next[ny*n+nx]=id;
@@ -1895,9 +1887,10 @@ function applyCloudPlayer(state){
  if(TOUCH_UI)resetRoamView(false);updateDrinkStatus();updateCarryBoardStatus();updateCarryProductStatus();updatePaletteQuantity();updateStatic();return true;
 }
 const NET={id:persistentPlayerId(),peers:new Map(),chan:null,ws:null,url:null,roomUrl:null,retry:null,retryMs:800,stopped:false,last:0,lastHttpState:0,lastPlayerSave:0,lastPlayerSig:'',saveTimer:null,on:false,pollTimer:null,pollBusy:false,pollCount:0,mid:0,seen:new Set(),restoring:true,restored:false,durable:false};
-boardSync=BeadBoardSync.createBoardSync({tables:names,delay:220,now:()=>performance.now(),
+boardSync=BeadBoardSync.createBoardSync({tables:boardIds,delay:80,maxChanges:512,localId:NET.id,
  read:tableId=>{const work=tableBoards[tableId];return work?{size:work.size,cells:packCells(work.cells)}:null;},
- send:(tableId,snapshot)=>{if(!NET.on||!tableBoards[tableId])return false;netSend({t:'board',table:tableId,size:snapshot.size,cells:snapshot.cells,revision:snapshot.revision});return true;}
+ sendPatch:(tableId,snapshot)=>{if(!NET.on||!tableBoards[tableId])return false;netSend({t:'board:patch',table:tableId,size:snapshot.size,changes:snapshot.changes});return true;},
+ sendReplace:(tableId,snapshot)=>{if(!NET.on||!tableBoards[tableId]||tableId===COLLAB_ID)return false;netSend({t:'board',table:tableId,size:snapshot.size,cells:snapshot.cells,baseRevision:snapshot.baseRevision});return true;}
 });
 function netColor(id){let n=0;for(const c of id||'')n=(n+c.charCodeAt(0))%997;return ['#e39a93','#9fc3a6','#a9b9e0','#e6c58a','#caa7d6','#8fd0c6','#e0a878','#bdd08f'][n%8];}
 function netConnectWs(){if(!NET.url||NET.stopped)return;clearTimeout(NET.retry);try{const ws=new WebSocket(NET.url);NET.ws=ws;NET.on=true;
@@ -1912,38 +1905,19 @@ function netStart(){
   else if('BroadcastChannel' in window){NET.chan=new BroadcastChannel('bead-house-room-v1');NET.chan.onmessage=e=>netRecv(e.data);NET.on=true;netSend({t:'hi',id:NET.id});}
   if(NET.roomUrl){NET.on=true;netPoll();netSend({t:'hi',id:NET.id});}else{NET.restoring=false;NET.restored=true;}
  }catch(_e){NET.on=false;}
- try{window.addEventListener('beforeunload',()=>{for(const tableId of names)if(boardSync.inspect(tableId).pendingLocal)netSendBoard(true,tableId);flushCollabChanges();boardSync.dispose();netSavePlayer(true);netSend({t:'bye',id:NET.id});NET.stopped=true;clearTimeout(NET.retry);clearTimeout(NET.pollTimer);clearTimeout(NET.saveTimer);clearTimeout(collabFlushTimer);});}catch(_e){}
+ try{window.addEventListener('beforeunload',()=>{for(const tableId of boardIds)if(boardSync.inspect(tableId).pendingLocal)netSendBoard(true,tableId);boardSync.dispose();netSavePlayer(true);netSend({t:'bye',id:NET.id});NET.stopped=true;clearTimeout(NET.retry);clearTimeout(NET.pollTimer);clearTimeout(NET.saveTimer);});}catch(_e){}
 }
 function netRemember(mid){if(!mid)return false;if(NET.seen.has(mid))return true;NET.seen.add(mid);if(NET.seen.size>1800)NET.seen=new Set([...NET.seen].slice(-900));return false;}
-function collabCellFromChar(ch){const index=COLOR_CHARS.indexOf(ch);return index>=0?swatches[index]?.id||null:null;}
-function flushCollabChanges(){
- clearTimeout(collabFlushTimer);collabFlushTimer=null;if(!collabQueuedCells.size)return;
- const changes=[...collabQueuedCells.entries()];collabQueuedCells.clear();netSend({t:'board:patch',table:COLLAB_ID,size:64,changes});
-}
-function netSendCollabChanges(nextPixels){
- if(typeof nextPixels!=='string'||nextPixels.length!==64*64||nextPixels===collabShadow)return;
- let changed=false;for(let i=0;i<nextPixels.length;i++)if(nextPixels[i]!==collabShadow[i]){collabPendingCells.set(i,nextPixels[i]);collabQueuedCells.set(i,nextPixels[i]);changed=true;}
- collabShadow=nextPixels;if(changed){clearTimeout(collabFlushTimer);collabFlushTimer=setTimeout(flushCollabChanges,80);}
-}
-function ackCollabChanges(changes){for(const change of changes||[]){const index=change?.[0],value=change?.[1];if(collabPendingCells.get(index)===value)collabPendingCells.delete(index);}}
-function finishCollabReceive(){
- collabShadow=packCells(tableBoards[COLLAB_ID].cells);try{localStorage.setItem('bead-house.v5.table'+COLLAB_ID,JSON.stringify({size:64,pixels:collabShadow}));}catch(_e){}
- if(PH.active&&activeTable===COLLAB_ID){try{rebuildBoardRaster();updateCount();updateSeatHud();}catch(_e){}}try{updateStatic();}catch(_e){}
-}
-function receiveCollabBoard(msg){
- const revision=Number.isSafeInteger(msg.revision)?msg.revision:0;if(revision<collabRevision)return;
- const cells=unpackCells(msg.cells,64);if(!cells)return;for(const [index,value] of collabPendingCells)if(index>=0&&index<cells.length)cells[index]=collabCellFromChar(value);
- tableBoards[COLLAB_ID]={size:64,cells};collabRevision=revision;finishCollabReceive();
-}
-function receiveCollabPatch(msg){
- if(!Array.isArray(msg.changes))return;const work=tableBoards[COLLAB_ID];
- for(const change of msg.changes){const index=change?.[0],value=change?.[1];if(!Number.isInteger(index)||index<0||index>=work.cells.length||typeof value!=='string'||value.length!==1)continue;
-  const pending=collabPendingCells.get(index);if(pending!==undefined){if(msg.id===NET.id&&pending===value)collabPendingCells.delete(index);else continue;}work.cells[index]=collabCellFromChar(value);}
- if(Number.isSafeInteger(msg.revision))collabRevision=Math.max(collabRevision,msg.revision);finishCollabReceive();
+function applySharedBoard(tableId,decision){
+ if(!decision?.apply||!sizeOptions.includes(decision.size))return;const cells=unpackCells(decision.cells,decision.size);if(!cells)return;
+ tableBoards[tableId]={size:decision.size,cells};try{localStorage.setItem('bead-house.v5.table'+tableId,JSON.stringify({size:decision.size,pixels:decision.cells}));}catch(_e){}
+ if(PH.active&&activeTable===tableId){try{rebuildBoardRaster();updateCount();updateSeatHud();}catch(_e){}}
+ if(activeModal==='editor'&&activeTable===tableId){try{rebuildBoardRaster();updateCount();}catch(_e){}}
+ try{updateStatic();}catch(_e){}
 }
 function netPost(packet){if(!NET.roomUrl)return;const now=performance.now();if(packet.t==='state'){if(now-NET.lastHttpState<420)return;NET.lastHttpState=now;}
  const retryable=['board','board:patch','gallery:add','gallery:put','gallery:remove','table:drink','player:save'].includes(packet.t);
- try{fetch(NET.roomUrl,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(packet),keepalive:retryable||packet.t==='bye'}).then(async response=>{if(response.ok){if(packet.t==='board'||packet.t==='board:patch'){try{const data=await response.json();if(packet.t==='board:patch')ackCollabChanges(packet.changes);if(data.board)netRecv(data.board);}catch(_e){}}return;}if(retryable&&!NET.stopped)setTimeout(()=>netPost(packet),1200);}).catch(()=>{if(retryable&&!NET.stopped)setTimeout(()=>netPost(packet),1200);});}catch(_e){}
+ try{fetch(NET.roomUrl,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(packet),keepalive:retryable||packet.t==='bye'}).then(async response=>{if(response.ok){if(packet.t==='board'||packet.t==='board:patch'){try{const data=await response.json();if(packet.t==='board:patch')boardSync.acknowledge(packet.table,packet.changes);if(data.board)netRecv(data.board);}catch(_e){}}return;}if(retryable&&!NET.stopped)setTimeout(()=>netPost(packet),1200);}).catch(()=>{if(retryable&&!NET.stopped)setTimeout(()=>netPost(packet),1200);});}catch(_e){}
 }
 async function netPoll(){if(NET.stopped||!NET.roomUrl)return;if(NET.pollBusy){NET.pollTimer=setTimeout(netPoll,450);return;}NET.pollBusy=true;
  try{const count=NET.pollCount++,params=new URLSearchParams();if(count%3===0){params.set('boards','1');params.set('drinks','1');}if(count%24===0)params.set('gallery','1');if(!NET.restored)params.set('player',NET.id);const response=await fetch(`${NET.roomUrl}?${params}`,{cache:'no-store'});if(response.ok){const data=await response.json();for(const msg of data.events||[])if(!netRemember(msg.mid))netRecv(msg);for(const msg of data.boards||[])netRecv(msg);for(const msg of data.tableDrinks||[])netRecv(msg);if(Array.isArray(data.gallery))replaceGalleryItems(data.gallery);NET.durable=!!data.durable;if(!NET.restored){applyCloudPlayer(data.player);NET.restoring=false;NET.restored=true;NET.lastPlayerSig=JSON.stringify(cloudPlayerSnapshot());}NET.on=true;}}
@@ -1952,11 +1926,11 @@ async function netPoll(){if(NET.stopped||!NET.roomUrl)return;if(NET.pollBusy){NE
 function netSend(msg){const packet={...msg,id:msg.id||NET.id,mid:msg.mid||`${NET.id}-${Date.now().toString(36)}-${(++NET.mid).toString(36)}`};if(packet.t!=='player:save'){try{if(NET.ws&&NET.ws.readyState===1)NET.ws.send(JSON.stringify(packet));else if(NET.chan)NET.chan.postMessage(packet);}catch(_e){}}netPost(packet);return packet;}
 function netRecv(msg){
  if(!msg||(msg.id===NET.id&&!['board','board:patch','table:drink'].includes(msg.t)))return;
- if(msg.t==='state'){const p=NET.peers.get(msg.id)||{};Object.assign(p,msg);p.last=performance.now();NET.peers.set(msg.id,p);if(PH.active&&activeTable===COLLAB_ID)updateSeatHud();}
- else if(msg.t==='bye'){NET.peers.delete(msg.id);if(PH.active&&activeTable===COLLAB_ID)updateSeatHud();}
- else if(msg.t==='hi'){netBroadcastSelf(true);if(PH.active&&activeTable&&!isCollabTable())netSendBoard(true,activeTable);if(!NET.roomUrl)for(const item of gallery)netSend({t:'gallery:add',id:NET.id,item,sync:true});}
- else if(msg.t==='board'&&boardIds.includes(msg.table)&&sizeOptions.includes(msg.size)){if(msg.table===COLLAB_ID){receiveCollabBoard(msg);return;}const decision=boardSync.receive(msg.table,msg);if(!decision.apply)return;const cells=unpackCells(msg.cells,msg.size);if(cells){tableBoards[msg.table]={size:msg.size,cells};try{localStorage.setItem('bead-house.v5.table'+msg.table,JSON.stringify({size:msg.size,pixels:msg.cells}));}catch(_e){}if(PH.active&&activeTable===msg.table){try{rebuildBoardRaster();updateCount();}catch(_e){}}try{updateStatic();}catch(_e){}}}
- else if(msg.t==='board:patch'&&msg.table===COLLAB_ID)receiveCollabPatch(msg);
+ if(msg.t==='state'){const p=NET.peers.get(msg.id)||{};Object.assign(p,msg);p.last=performance.now();NET.peers.set(msg.id,p);if(PH.active)updateSeatHud();}
+ else if(msg.t==='bye'){NET.peers.delete(msg.id);if(PH.active)updateSeatHud();}
+ else if(msg.t==='hi'){netBroadcastSelf(true);if(!NET.roomUrl)for(const item of gallery)netSend({t:'gallery:add',id:NET.id,item,sync:true});}
+ else if(msg.t==='board'&&boardIds.includes(msg.table)&&sizeOptions.includes(msg.size))applySharedBoard(msg.table,boardSync.receiveBoard(msg.table,msg));
+ else if(msg.t==='board:patch'&&boardIds.includes(msg.table))applySharedBoard(msg.table,boardSync.receivePatch(msg.table,msg));
  else if(msg.t==='gallery:add'){const added=mergeGalleryItems([msg.item]);if(added&&!msg.sync)toast(`${msg.item?.author||'一位豆友'}在多人心愿墙挂上了新作品。`);}
  else if(msg.t==='gallery:put'){const changed=putGalleryItems([msg.item]);if(changed&&!msg.sync)toast(`${msg.item?.author||'一位豆友'}在${wallSurface(msg.item?.wallId).label}挂上了作品。`);}
  else if(msg.t==='gallery:remove'){const removed=removeGalleryItem(msg.itemId);if(removed&&!msg.sync)toast(`${msg.id===NET.id?'你':'一位豆友'}取下了墙上的${PRODUCT_META[removed.mount]?.label||'作品'}。`);}
@@ -1969,10 +1943,9 @@ function netBroadcastSelf(force){
  netSend({t:'state',id:NET.id,nick:(typeof nickname!=='undefined'?nickname:'游客'),x:Math.round(player.x*100)/100,z:Math.round(player.z*100)/100,yaw:Math.round(camera.angle*100)/100,seat:(PH.active?activeTable:null),walk:player.walk>.3?1:0});
  netSavePlayer(false);
 }
-function netPrune(){const now=performance.now();for(const [id,p] of NET.peers)if(now-p.last>3500)NET.peers.delete(id);}
-function netTableOwner(tableId){for(const [,p] of NET.peers)if(p.seat===tableId)return p;return null;}
+function netPrune(){const now=performance.now();let changed=false;for(const [id,p] of NET.peers)if(now-p.last>3500){NET.peers.delete(id);changed=true;}if(changed&&PH.active){seatHudSig='';updateSeatHud();}}
 function netMarkBoardChanged(tableId=activeTable){if(boardSync)boardSync.changed(tableId);}
-function netSendBoard(force=false,tableId=activeTable){if(tableId!==COLLAB_ID&&boardSync)boardSync.flush(tableId,force);}
+function netSendBoard(force=false,tableId=activeTable){if(boardSync)boardSync.flush(tableId,force);}
 // A standing ~1.8m figure facing `yaw`, for remote players.
 function addFigure(m,x,z,yaw,shirt,bob){bob=bob||0;const skin='#f3d3b2',hair='#5c4638';
  const fx=Math.sin(yaw),fz=Math.cos(yaw),rx=Math.cos(yaw),rz=-Math.sin(yaw);
@@ -2142,13 +2115,14 @@ function updateLabels(){
  }
  for(const l of chosen){const info=spatialInfo(l.kind,l.t),p=worldToScreen(info.pos);if(!p||p.x<16||p.x>layout.width-16||p.y<48||p.y>layout.height-16)continue;
   if(l.kind==='collab'){const filled=tableBoards[COLLAB_ID].cells.reduce((sum,id)=>sum+(id?1:0),0),people=1+[...NET.peers.values()].filter(peer=>peer.seat===COLLAB_ID).length;l.el.querySelector('.collab-label-text').textContent=`公共大作品 · ${filled}/4096 · ${people} 人共创`;}
+  if(l.kind==='desk'){const peers=[...NET.peers.values()].filter(peer=>peer.seat===l.t.id).length,people=peers+(PH.active&&activeTable===l.t.id?1:0),copy=l.el.querySelector('.multiplayer-label-text');if(copy)copy.textContent=`${l.t.id}号多人桌${people?` · ${people}人共创`:' · 加入共创'}`;}
   l.el.style.left=p.x+'px';l.el.style.top=p.y+'px';l.el.style.display='flex';
  }
 }
 function createLabels(){
  const root=$('sceneLabels');
  for(const t of positions){
-  const b=document.createElement('button');b.className='desk-label spatial-label';b.innerHTML='<span class="spatial-icon">✳</span><span>拼豆</span>';b.title=`拼豆桌 ${t.id}`;b.setAttribute('aria-label',`前往拼豆桌 ${t.id}`);b.onclick=()=>approach(t);root.appendChild(b);labels.push({el:b,t,kind:'desk'});
+  const b=document.createElement('button');b.className='desk-label spatial-label';b.innerHTML=`<span class="spatial-icon">✦</span><span class="multiplayer-label-text">${t.id}号多人桌 · 加入共创</span>`;b.title=`多人拼豆桌 ${t.id}`;b.setAttribute('aria-label',`前往多人拼豆桌 ${t.id}`);b.onclick=()=>approach(t);root.appendChild(b);labels.push({el:b,t,kind:'desk'});
   const small=document.createElement('button');small.className='desk-label spatial-label table-bin-label';small.innerHTML='<span class="spatial-icon">◉</span><span>取豆</span>';small.title=`${t.id} 桌边取豆`;small.setAttribute('aria-label',`${t.id} 号桌取豆`);
   small.onclick=()=>{activeTable=t.id;pickupAt='table';pickupTable=t.id;pickupReturn='pattern';openTablePickup();};root.appendChild(small);labels.push({el:small,t,kind:'tablebin'});
  }
@@ -2166,10 +2140,7 @@ function approach(t){
  if(carriedBoard){toast('双手正端着底板，不能坐下拼豆。请先送到熨烫间。');return;}
  if(carriedProduct){toast('手里拿着烫好的成品，请先到展示墙挂上。');return;}
  pendingStation=false;pendingBeadStation=false;pendingCoffee=false;
- // One seat per table: if another player is already working here, walk over to WATCH (their
- // beads sync onto this table live) instead of sitting.
- const owner=t.collab?null:netTableOwner(t.id);
- if(owner){pendingTable=null;const c=tableApproachPoints(t).filter(p=>phCanStep(p.x,p.z)).sort((a,b)=>Math.hypot(player.x-a.x,player.z-a.z)-Math.hypot(player.x-b.x,player.z-b.z))[0];if(c){const r=phRouteTo(c.x,c.z);player.target=r.length?r.shift():c;player.route=r.length?r:[];}toast(`${owner.nick||'有人'} 正在用这张桌子，你在旁边看看～`);return;}
+ // Every table is collaborative: presence never reserves or locks a seat.
  pendingTable=t;
  // Already standing next to the table? Sit immediately.
  if(tableReady(t)){pendingTable=null;player.target=null;player.route=[];phSit(t);return;}
@@ -2223,7 +2194,7 @@ function update(dt){
  if(activeModal)return;const carryStartX=player.x,carryStartZ=player.z;let dx=Number(input.d)-Number(input.a),dz=Number(input.s)-Number(input.w),moving=false;
  // Robust sit: the instant you're beside the table you walked up to, sit down — no need to
  // land exactly on a seat point (which could leave you a step short, stuck, or on the wrong side).
- if(pendingTable&&tableReady(pendingTable)){const t=pendingTable;pendingTable=null;player.target=null;player.route=[];if(!t.collab&&netTableOwner(t.id))toast(`有人刚坐下了，你在旁边看看～`);else phSit(t);return;}
+ if(pendingTable&&tableReady(pendingTable)){const t=pendingTable;pendingTable=null;player.target=null;player.route=[];phSit(t);return;}
  if(pendingCoffee&&Math.hypot(player.x-COFFEE_POS.x,player.z-COFFEE_POS.z)<2.8){pendingCoffee=false;player.target=null;player.route=[];takeCoffee();return;} // open the café as soon as you reach the counter
  if(pendingBeadStation&&Math.hypot(player.x+12,player.z-14.7)<2.8){pendingBeadStation=false;player.target=null;player.route=[];phWallEnter();return;} // open the bead wall on arrival
  if(pendingStation&&Math.hypot(player.x-12.6,player.z-16)<2.8){pendingStation=false;player.target=null;player.route=[];phAutoIron();return;} // open the ironing station on arrival
@@ -2274,15 +2245,17 @@ function drawViewport(){const canvas=$('beadCanvas'),c=canvas.getContext('2d',{a
  }
  $('zoomLabel').textContent=Math.round(zoom*100)+'%';}
 function requestViewport(){if(boardRaf)return;boardRaf=requestAnimationFrame(()=>{boardRaf=0;drawViewport();});}
-function updateCount(){const n=board().size,count=current().reduce((sum,c)=>sum+(c?1:0),0);if($('traySummary'))$('traySummary').textContent=`已取 ${trayTotal()} 颗 · ${pickupTool==='tweezers'?'镊子':pickupTool==='single'?'单针豆笔':'双针豆笔'}`;if($('colorCode'))$('colorCode').textContent=`${paintColor} · 托盘剩余 ${tray[paintColor]||0} 颗（内部编号）`;$('pieceCount').textContent=`已放置 ${count.toLocaleString('zh-CN')} / ${(n*n).toLocaleString('zh-CN')} 颗`;
+function updateCount(){const n=board().size,count=current().reduce((sum,c)=>sum+(c?1:0),0);if($('traySummary'))$('traySummary').textContent=`已取 ${trayTotal()} 颗 · ${pickupTool==='tweezers'?'镊子':pickupTool==='single'?'单针豆笔':'双针豆笔'}`;if($('colorCode'))$('colorCode').textContent=`${paintColor} · 托盘剩余 ${tray[paintColor]||0} 颗（内部编号）`;$('pieceCount').textContent=`多人共创 · 已放置 ${count.toLocaleString('zh-CN')} / ${(n*n).toLocaleString('zh-CN')} 颗`;
+ if($('boardSize'))$('boardSize').disabled=isCollabTable()||count>0;
  $('toolEquipped').textContent=`当前工具：${toolLabels[pickupTool]} · ${pickupTool==='tweezers'?'点一颗、拖一排连续摆豆':pickupTool==='single'?'可拖动连续摆豆':'每次并排放两颗'}`;
  const std=Math.ceil(n/29)**2,mini=Math.ceil(n/52)**2;
  $('boardInfo').textContent=`${n}×${n} · 5mm 29格底板约 ${std} 块 / 迷你52格约 ${mini} 块`;
 }
-function openEditor(id){activeTable=id;undo=[];redo=[];painting=false;panGesture=null;zoom=1;panX=0;panY=0;setTool('paint');$('editorTitle').textContent=`拼豆桌 ${id} · 自由创作`;
- $('editorSub').textContent='';$('boardSize').value=String(board().size);openModal('editor');renderReferencePanel();rebuildBoardRaster();updateCount();}
+function openEditor(id){activeTable=id;undo=[];redo=[];painting=false;panGesture=null;zoom=1;panX=0;panY=0;setTool('paint');$('editorTitle').textContent=id===COLLAB_ID?'公共大作品 · 多人共创':`${id} 号多人拼豆桌 · 实时共创`;
+ const people=1+[...NET.peers.values()].filter(peer=>peer.seat===id).length;$('editorSub').textContent=`${people} 人正在同桌 · 每颗豆实时同步并保存`;$('boardSize').value=String(board().size);openModal('editor');renderReferencePanel();rebuildBoardRaster();updateCount();}
 function resizeBoard(n){if(!sizeOptions.includes(n))return;const old=board();if(n===old.size)return;
- const hasBeads=old.cells.some(Boolean);if(hasBeads&&!confirm(`把 ${old.size}×${old.size} 改为 ${n}×${n}？\n已拼的豆子会居中保留；超出新画板的部分会被裁掉。`)){$('boardSize').value=String(old.size);return;}
+ if(isCollabTable()){toast('公共大作品固定为 64 × 64。');$('boardSize').value=String(old.size);return;}
+ const hasBeads=old.cells.some(Boolean);if(hasBeads){toast('多人桌已有共同作品，不能单方面更换底板。');$('boardSize').value=String(old.size);return;}
  const next=Array(n*n).fill(null),offset=Math.floor((n-old.size)/2);
  for(let y=0;y<old.size;y++)for(let x=0;x<old.size;x++){const nx=x+offset,ny=y+offset;if(nx>=0&&ny>=0&&nx<n&&ny<n)next[ny*n+nx]=old.cells[y*old.size+x];}
  const kept=new Map();for(const id of next)if(id)kept.set(id,(kept.get(id)||0)+1);
@@ -2299,6 +2272,7 @@ function pointerIndex(e){const box=$('beadCanvas').getBoundingClientRect(),s=cro
 }
 function applyIndex(i){if(i<0)return;const id=(rightErase||tool==='erase')?null:paintColor,cells=current();const old=cells[i];if(old===id)return;
  if(id&&(tray[id]||0)<=0){if(!window._outOfBeadsNotice||Date.now()-window._outOfBeadsNotice>1500){window._outOfBeadsNotice=Date.now();toast(`${id} 豆盒未取或托盘已空，先去取豆区补豆。`);}return;}
+ if(painting&&strokeChanges&&!strokeChanges.has(i))strokeChanges.set(i,old);
  if(old)tray[old]=(tray[old]||0)+1;if(id)tray[id]--;cells[i]=id;movedStroke=true;drawBeadCell(i);requestViewport();updateCount();updatePaletteQuantity();
  if(!window._beadSndAt||performance.now()-window._beadSndAt>45){window._beadSndAt=performance.now();id?SFX.place():SFX.erase();}}
 function applyWithTool(i){if(i<0)return;const n=board().size;if(pickupTool==='double'&&tool==='paint'&&!rightErase){const next=i%n<n-1?i+1:i-1;const needed=[i,next].filter(index=>current()[index]!==paintColor).length;if(needed>(tray[paintColor]||0)){toast('双针豆笔需要至少 '+needed+' 颗同色豆，请去豆墙补充。');return;}applyIndex(i);if(next!==i)applyIndex(next);}else applyIndex(i);}
@@ -2316,15 +2290,16 @@ function floodFill(start,replacement){
  }
  if(!region.length)return;
  if(replacement&&(tray[replacement]||0)<=0){toast(`${replacement} 托盘为空，先去取豆。`);return;}
- undo.push([...cells]);if(undo.length>(n>=128?12:24))undo.shift();redo=[];
+ const changes=[];redo=[];
  let filled=0;
  for(const i of region){
   if(replacement&&(tray[replacement]||0)<=0)break;
   const old=cells[i];if(old)tray[old]=(tray[old]||0)+1;
   if(replacement)tray[replacement]=Math.max(0,(tray[replacement]||0)-1);
-  cells[i]=replacement;drawBeadCell(i);filled++;
+  cells[i]=replacement;changes.push([i,old,replacement]);drawBeadCell(i);filled++;
  }
- if(!filled){undo.pop();return;}
+ if(!filled)return;
+ undo.push(changes);if(undo.length>(n>=128?12:24))undo.shift();
  requestViewport();updateCount();updatePaletteQuantity();storeBoard();persistTray();updateStatic();
  toast(replacement?(filled<region.length?`填充 ${filled} 颗 · ${replacement} 不够，还差 ${region.length-filled} 颗`:`一键填充 ${filled} 颗`):`清除 ${filled} 颗`);
  SFX.pour();
@@ -2332,19 +2307,18 @@ function floodFill(start,replacement){
 function beginStroke(e){if(e.button!==0&&e.button!==2&&e.button!==1)return;
  if(tool==='pan'||e.button===1||e.shiftKey){panGesture={x:e.clientX,y:e.clientY,panX,panY};$('beadCanvas').style.cursor='grabbing';$('beadCanvas').setPointerCapture(e.pointerId);return;}
  if(tool==='fill'){floodFill(pointerIndex(e),e.button===2?null:paintColor);return;}
- painting=true;movedStroke=false;rightErase=e.button===2;strokeLast=-1;undo.push([...current()]);if(undo.length>(board().size>=128?12:24))undo.shift();redo=[];
+ painting=true;movedStroke=false;rightErase=e.button===2;strokeLast=-1;strokeChanges=new Map();redo=[];
  $('beadCanvas').setPointerCapture(e.pointerId);const i=pointerIndex(e);applyWithTool(i);strokeLast=i;
 }
 function moveStroke(e){if(panGesture){const r=$('beadCanvas').getBoundingClientRect(),visible=board().size/zoom;panX=panGesture.panX-(e.clientX-panGesture.x)/r.width*visible;panY=panGesture.panY-(e.clientY-panGesture.y)/r.height*visible;drawViewport();return;}
  if(!painting)return;const i=pointerIndex(e);if(i<0)return;if(strokeLast>=0&&strokeLast!==i)lineToCell(strokeLast,i);else applyWithTool(i);strokeLast=i;
 }
 function endStroke(){if(panGesture){panGesture=null;$('beadCanvas').style.cursor=tool==='pan'?'grab':'crosshair';return;}
- if(!painting)return;painting=false;strokeLast=-1;if(movedStroke){storeBoard();persistTray();updateStatic();}else undo.pop();}
-function reconcileInventory(before,after){for(let i=0;i<before.length;i++){if(before[i]===after[i])continue;if(before[i])tray[before[i]]=(tray[before[i]]||0)+1;if(after[i])tray[after[i]]=Math.max(0,(tray[after[i]]||0)-1);}}
-function history(action){let next;if(action==='undo'&&undo.length){redo.push([...current()]);next=undo.pop();}
- else if(action==='redo'&&redo.length){undo.push([...current()]);next=redo.pop();}else return;
- reconcileInventory(current(),next);board().cells=next;rebuildBoardRaster();updateCount();updatePaletteQuantity();storeBoard();persistTray();updateStatic();}
-function askClear(){if(!current().some(Boolean))return;if(!confirm(`确认清空拼豆桌 ${activeTable} 的全部拼豆？可撤销。`))return;undo.push([...current()]);if(undo.length>16)undo.shift();redo=[];board().cells=Array(board().size**2).fill(null);for(const c of undo[undo.length-1])if(c)tray[c]=(tray[c]||0)+1;rebuildBoardRaster();updateCount();updatePaletteQuantity();storeBoard();persistTray();updateStatic();}
+ if(!painting)return;painting=false;strokeLast=-1;if(movedStroke){const cells=current(),entry=[...(strokeChanges||new Map())].map(([index,before])=>[index,before,cells[index]]).filter(([,before,after])=>before!==after);if(entry.length){undo.push(entry);if(undo.length>(board().size>=128?12:24))undo.shift();}storeBoard();persistTray();updateStatic();}strokeChanges=null;}
+function history(action){const source=action==='undo'?undo:redo,target=action==='undo'?redo:undo;if(!source.length)return;const entry=source.pop(),cells=current(),applied=[];
+ for(const [index,before,after] of entry){const expected=action==='undo'?after:before,next=action==='undo'?before:after;if(cells[index]!==expected)continue;const old=cells[index];if(old)tray[old]=(tray[old]||0)+1;if(next)tray[next]=Math.max(0,(tray[next]||0)-1);cells[index]=next;drawBeadCell(index);applied.push([index,before,after]);}
+ if(!applied.length){toast('这些格子后来已被其他玩家修改，未覆盖对方的进度。');return;}target.push(applied);requestViewport();updateCount();updatePaletteQuantity();storeBoard();persistTray();updateStatic();if(applied.length<entry.length)toast('已撤销自己的操作；其他玩家后来修改的格子已保留。');}
+function askClear(){toast('多人桌不能整板清空；请逐颗调整，避免误删其他玩家的进度。');}
 function exportPng(){const n=board().size,out=Math.min(3072,Math.max(768,n*12)),step=out/n,c=document.createElement('canvas');c.width=c.height=out;const g=c.getContext('2d');g.fillStyle='#fcf5e7';g.fillRect(0,0,out,out);
  const cells=current();for(let i=0;i<cells.length;i++){const id=cells[i];if(!id)continue;const x=i%n,y=Math.floor(i/n);g.fillStyle=colorLookup[id];g.beginPath();g.arc((x+.5)*step,(y+.5)*step,step*.43,0,Math.PI*2);g.fill();}
  const link=document.createElement('a');link.download=`拼豆小屋-${activeTable}-${n}x${n}.png`;link.href=c.toDataURL('image/png');document.body.appendChild(link);link.click();link.remove();toast(`已导出 ${n}×${n} PNG。`);
@@ -2458,7 +2432,7 @@ function startIron(resumeFrom=0){if(ironBusy)return;if(!current().some(Boolean))
 function selectIronProduct(product){if(!PRODUCT_META[product])return;selectedIronProduct=product;document.querySelectorAll('#ironProductGrid [data-product]').forEach(b=>b.classList.toggle('on',b.dataset.product===product));if(ironFinished)drawIronFrame(1);markCloudProgress();SFX.ui();}
 function takeFinishedProduct(){if(!ironFinished){toast('请先完成虚拟熨烫。');return;}if(!carriedBoard){toast('手里没有可制作成品的底板。');return;}if(carriedProduct){toast('手里已经拿着一件成品。');return;}activeTable=carriedBoard;const suggested=`${nickname}的拼豆作品`,name=($('ironName').value.trim()||suggested).slice(0,24),finishedCells=[...current()],finishedSize=board().size;
  carriedProduct={name,size:finishedSize,pixels:packCells(finishedCells),cells:finishedCells,level:$('ironLevel').value,technique:$('ironTechnique').value,mount:selectedIronProduct,sides:$('ironSides').value,by:$('ironService').value,author:nickname,date:new Date().toISOString()};
- board().cells=Array(finishedSize*finishedSize).fill(null);storeBoard();netSendBoard(true,activeTable);rebuildBoardRaster();updateCount();ironFinished=false;ironBusy=false;ironProgressValue=0;restoredIronState=null;carriedBoard=null;resetBoardCarryMotion();PH.boardOut=true;updateCarryBoardStatus();updateCarryProductStatus();updateStatic();closeModal();markCloudProgress();toast(`已拿起${PRODUCT_META[carriedProduct.mount].label}，可以亲自挂到任意墙面。`);player.target=null;player.route=[];pendingTable=null;pendingStation=false;pendingCoffee=false;
+ board().cells=Array(finishedSize*finishedSize).fill(null);replaceSharedBoard(activeTable);rebuildBoardRaster();updateCount();ironFinished=false;ironBusy=false;ironProgressValue=0;restoredIronState=null;carriedBoard=null;resetBoardCarryMotion();PH.boardOut=true;updateCarryBoardStatus();updateCarryProductStatus();updateStatic();closeModal();markCloudProgress();toast(`已拿起${PRODUCT_META[carriedProduct.mount].label}，可以亲自挂到任意墙面。`);player.target=null;player.route=[];pendingTable=null;pendingStation=false;pendingCoffee=false;
 }
 function wallPlayerU(surface){return surface.axis==='z'?player.x:player.z;}
 function wallPlayerAxis(surface){return surface.axis==='z'?player.z:player.x;}
@@ -2600,7 +2574,7 @@ function wire(){
  $('infoOkay').onclick=closeModal;$('infoClose').onclick=closeModal;
  $('editorClose').onclick=closeModal;$('pickupClose').onclick=closeModal;$('ironClose').onclick=closeModal;
  $('helpBtn').onclick=()=>openModal('help');$('helpClose').onclick=closeModal;$('helpOkay').onclick=closeModal;
- $('helpTutorial').onclick=()=>{try{localStorage.removeItem(BEAD_COACH_KEY);}catch(_e){}closeModal();if(PH.active)startBeadCoach(true);else{const near=nearestDesk();if(near.t)approach(near.t);toast('正在前往最近的拼豆桌，坐下后会开始分步引导。');}};
+ $('helpTutorial').onclick=()=>{try{localStorage.removeItem(BEAD_COACH_KEY);}catch(_e){}closeModal();if(PH.active)startBeadCoach(true);else{const near=nearestDesk();if(near.t)approach(near.t);toast('正在前往最近的多人拼豆桌，坐下后会开始分步引导。');}};
  $('nameBtn').onclick=()=>{$('nameInput').value=nickname;openModal('nameModal');};
  $('nameClose').onclick=closeModal;
  $('nameSave').onclick=()=>{const value=$('nameInput').value.trim();if(!value){toast('请输入昵称。');return;}nickname=value.slice(0,16);saveNick();$('displayName').textContent=nickname;closeModal();toast(`欢迎，${nickname}`);};
@@ -2609,8 +2583,8 @@ function wire(){
  $('zoomIn').onclick=()=>setZoom(zoom*1.5);$('zoomOut').onclick=()=>setZoom(zoom/1.5);
  $('fitBtn').onclick=()=>{panX=panY=0;setZoom(1);};
  $('undoBtn').onclick=()=>history('undo');$('redoBtn').onclick=()=>history('redo');
- $('saveBtn').onclick=()=>{storeBoard();persistTray();toast('作品留在桌上（除非有人清空）。想长期保存请熨烫后挂到展示墙。');};
- $('clearBtn').onclick=askClear;$('exportBtn').onclick=exportPng;
+ $('saveBtn').onclick=()=>{storeBoard();persistTray();toast('共同作品已同步给同桌玩家并保存到云端。完成后可以拿去熨烫并挂墙。');};
+ $('exportBtn').onclick=exportPng;
  $('ironBtn').onclick=carryBoardForIron;
  $('ironTechnique').onchange=()=>{drawIronPreview();markCloudProgress();};$('ironLevel').onchange=()=>{drawIronPreview();markCloudProgress();};$('ironSides').onchange=()=>{drawIronPreview();markCloudProgress();};
  $('ironService').onchange=()=>{syncIronServiceUI();markCloudProgress();};$('ironName').oninput=markCloudProgress;

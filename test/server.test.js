@@ -39,7 +39,8 @@ test('serves the game and persists the complete shared room', async t => {
   assert.match(homeHtml, /id="roomNavToggle"/);
   assert.match(homeHtml, /id="beadCoach"/);
   assert.match(homeHtml, /id="guideHelp"/);
-  assert.match(homeHtml, /空手长按画板，可清空拼豆板/);
+  assert.match(homeHtml, /所有拼豆桌均为多人桌/);
+  assert.doesNotMatch(homeHtml, /清空当前画板/);
   assert.match(homeHtml, /id="carryCupHit"/);
   assert.doesNotMatch(homeHtml, /id="carryDrink"/);
   const boardSyncSource = await fetch(`${running.origin}/src/board-sync.js`);
@@ -107,7 +108,7 @@ test('rejects stale board snapshots so placed beads cannot roll back', async t =
   assert.equal(snapshot.boards[0].cells.slice(0, 2), 'AA');
 });
 
-test('merges simultaneous cell patches on the durable communal 64x64 board', async t => {
+test('merges simultaneous cell patches on every durable multiplayer table', async t => {
   const dataDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'bead-house-collab-'));
   let running = await start(dataDir);
   t.after(async () => {
@@ -128,6 +129,24 @@ test('merges simultaneous cell patches on the durable communal 64x64 board', asy
   assert.equal(board.cells.slice(17, 21), 'ABCD');
   assert.equal(board.revision, 2);
 
+  const smallTablePatches = [
+    { t: 'board:patch', id: 'p-table-a', mid: 'table-a-1', table: 'A', size: 16, changes: [[41, 'E'], [42, 'F']] },
+    { t: 'board:patch', id: 'p-table-b', mid: 'table-b-1', table: 'A', size: 16, changes: [[43, 'G'], [44, 'H']] }
+  ];
+  const smallResponses = await Promise.all(smallTablePatches.map(message => post(running.origin, message)));
+  assert.deepEqual(smallResponses.map(response => response.status), [202, 202]);
+  snapshot = await (await fetch(`${running.origin}/api/room?boards=1`)).json();
+  const smallBoard = snapshot.boards.find(item => item.table === 'A');
+  assert.equal(smallBoard.cells.slice(41, 45), 'EFGH');
+  assert.equal(smallBoard.revision, 2);
+  const staleReplace = await (await post(running.origin, {
+    t: 'board', id: 'p-table-a', mid: 'table-a-stale-replace', table: 'A', size: 32,
+    cells: '.'.repeat(32 * 32), baseRevision: 1
+  })).json();
+  assert.equal(staleReplace.stale, true);
+  assert.equal(staleReplace.board.size, 16);
+  assert.equal(staleReplace.board.cells.slice(41, 45), 'EFGH');
+
   assert.equal((await post(running.origin, { t: 'board', id: 'p-collab-a', mid: 'collab-full', table: 'M', size: 64, cells: '.'.repeat(4096), revision: 3 })).status, 400);
 
   await running.app.close();
@@ -136,6 +155,7 @@ test('merges simultaneous cell patches on the durable communal 64x64 board', asy
   board = snapshot.boards.find(item => item.table === 'M');
   assert.equal(board.cells.slice(17, 21), 'ABCD');
   assert.equal(board.revision, 2);
+  assert.equal(snapshot.boards.find(item => item.table === 'A').cells.slice(41, 45), 'EFGH');
 });
 
 test('relays live multiplayer messages through the same-origin WebSocket', async t => {

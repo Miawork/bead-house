@@ -15,6 +15,7 @@ const { WebSocketServer, WebSocket } = require('ws');
 const ROOT = __dirname;
 const COLLAB_TABLE = 'M';
 const TABLES = [...Array.from({ length: 12 }, (_, index) => String.fromCharCode(65 + index)), COLLAB_TABLE];
+const BOARD_SIZES = new Set([16, 29, 32, 48, 52, 58, 64, 78, 87, 96, 104, 116, 128, 156, 208, 256]);
 const ALLOWED_TYPES = new Set(['hi', 'bye', 'state', 'board', 'board:patch', 'gallery:add', 'gallery:put', 'gallery:remove', 'table:drink', 'player:save']);
 const CELL_CHARS = '.ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&*+-:;=?@^_~<>()[]{}';
 const MAX_MESSAGE_BYTES = 128 * 1024;
@@ -187,13 +188,16 @@ function createBeadHouseServer(options = {}) {
     if (message.t === 'board' && message.table === COLLAB_TABLE) {
       return { accepted: false, reason: 'collab-board-requires-patches' };
     }
-    if (message.t === 'board' && TABLES.includes(message.table) && typeof message.cells === 'string') {
+    if (message.t === 'board' && TABLES.includes(message.table) && BOARD_SIZES.has(message.size) &&
+      typeof message.cells === 'string' && message.cells.length === message.size * message.size &&
+      [...message.cells].every(value => CELL_CHARS.includes(value))) {
       const current = store.boards[message.table];
       const currentRevision = Number.isSafeInteger(current?.revision) ? current.revision : 0;
-      const proposedRevision = Number.isSafeInteger(message.revision) && message.revision >= 0
-        ? message.revision
-        : currentRevision + 1;
-      if (current && proposedRevision <= currentRevision) {
+      const guardedReplace = Number.isSafeInteger(message.baseRevision) && message.baseRevision >= 0;
+      const proposedRevision = guardedReplace
+        ? currentRevision + 1
+        : (Number.isSafeInteger(message.revision) && message.revision >= 0 ? message.revision : currentRevision + 1);
+      if (current && ((guardedReplace && message.baseRevision !== currentRevision) || (!guardedReplace && proposedRevision <= currentRevision))) {
         stale = true;
         authoritative = current;
       } else {
@@ -202,28 +206,35 @@ function createBeadHouseServer(options = {}) {
         changed = true;
       }
       authoritativeBoard = authoritative;
-    } else if (message.t === 'board:patch' && message.table === COLLAB_TABLE && message.size === 64 &&
+    } else if (message.t === 'board:patch' && TABLES.includes(message.table) && BOARD_SIZES.has(message.size) &&
+      (message.table !== COLLAB_TABLE || message.size === 64) &&
       Array.isArray(message.changes) && message.changes.length > 0 && message.changes.length <= 1024) {
-      const current = store.boards[COLLAB_TABLE];
-      const source = current?.size === 64 && typeof current.cells === 'string' && current.cells.length === 64 * 64
-        ? current.cells
-        : '.'.repeat(64 * 64);
-      const cells = source.split('');
-      const validChanges = [];
-      for (const change of message.changes) {
-        const index = change?.[0], value = change?.[1];
-        if (!Number.isInteger(index) || index < 0 || index >= cells.length || typeof value !== 'string' ||
-          value.length !== 1 || !CELL_CHARS.includes(value)) continue;
-        cells[index] = value;
-        validChanges.push([index, value]);
+      const current = store.boards[message.table];
+      if (current && (current.size !== message.size || typeof current.cells !== 'string' || current.cells.length !== message.size * message.size)) {
+        stale = true;
+        authoritative = current;
+        authoritativeBoard = current;
+      } else {
+        const source = current?.size === message.size && typeof current.cells === 'string' && current.cells.length === message.size * message.size
+          ? current.cells
+          : '.'.repeat(message.size * message.size);
+        const cells = source.split('');
+        const validChanges = [];
+        for (const change of message.changes) {
+          const index = change?.[0], value = change?.[1];
+          if (!Number.isInteger(index) || index < 0 || index >= cells.length || typeof value !== 'string' ||
+            value.length !== 1 || !CELL_CHARS.includes(value)) continue;
+          cells[index] = value;
+          validChanges.push([index, value]);
+        }
+        if (!validChanges.length) return { accepted: false, reason: 'invalid-board-patch' };
+        const revision = (Number.isSafeInteger(current?.revision) ? current.revision : 0) + 1;
+        authoritative = { ...received, changes: validChanges, revision };
+        authoritativeBoard = { t: 'board', id: message.id, mid: message.mid, table: message.table, size: message.size,
+          cells: cells.join(''), revision, _roomAt: received._roomAt };
+        store.boards[message.table] = authoritativeBoard;
+        changed = true;
       }
-      if (!validChanges.length) return { accepted: false, reason: 'invalid-board-patch' };
-      const revision = (Number.isSafeInteger(current?.revision) ? current.revision : 0) + 1;
-      authoritative = { ...received, changes: validChanges, revision };
-      authoritativeBoard = { t: 'board', id: message.id, mid: message.mid, table: COLLAB_TABLE, size: 64,
-        cells: cells.join(''), revision, _roomAt: received._roomAt };
-      store.boards[COLLAB_TABLE] = authoritativeBoard;
-      changed = true;
     } else if (message.t === 'gallery:add' && message.item && typeof message.item.id === 'string') {
       if (!store.gallery[message.item.id] && !store.galleryRemoved[message.item.id]) store.gallery[message.item.id] = message.item;
       appendEvent(received);

@@ -5,8 +5,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#efe7da" />
-  <meta name="description" content="打开即进入拼豆小屋。靠近和点击场景中的拼豆桌、豆盒、咖啡角和熨烫间，沉浸式体验手作小店。" />
-  <title>拼豆小屋 V2.1 · 清晰工作台与真实工具位置</title>
+  <meta name="description" content="打开即进入多人拼豆小屋。每张拼豆桌都支持多人实时共创，所有进度保存到云端。" />
+  <title>拼豆小屋 V2.1 · 多人实时共创</title>
   <link rel="stylesheet" href="./src/style.css" />
   <link rel="stylesheet" href="./src/physical.css" />
   <script defer src="./src/board-sync.js"></script>
@@ -21,7 +21,7 @@
     <div class="room-nav-head"><div><small>你在</small><strong id="roomZoneTitle">工作区</strong></div><button id="roomNavClose" type="button" aria-label="收起地图">×</button></div>
     <div class="room-nav-grid">
       <button type="button" data-room-dest="collab"><span>✦</span>公共大桌</button>
-      <button type="button" data-room-dest="desk"><span>▦</span>找拼豆桌</button>
+      <button type="button" data-room-dest="desk"><span>▦</span>找多人桌</button>
       <button type="button" data-room-dest="coffee"><span>☕</span>咖啡角</button>
       <button type="button" data-room-dest="beads"><span>◉</span>大豆墙</button>
       <button type="button" data-room-dest="iron"><span>♨</span>熨烫间</button>
@@ -48,8 +48,7 @@
   <div id="seatHud" class="hidden" aria-live="polite">
     <div class="seat-hud-main"><span class="seat-tool-ico" id="seatToolIco">✋</span><div class="seat-hud-text"><b id="seatToolName">空手</b><small id="seatHeldLine">点分格盒里的散豆夹取；在钉板上点一下或拖动摆豆</small></div></div>
     <div class="seat-hud-grab" role="group" aria-label="每次夹取数量"><span>夹取量</span><button type="button" data-grab="1">1</button><button type="button" data-grab="10">10</button><button type="button" data-grab="50">50</button><button type="button" data-grab="all">整盒</button></div>
-    <div id="seatClearHint" class="seat-clear-hint hidden" role="note"><span>⌛</span>空手长按画板，可清空拼豆板</div>
-    <div id="seatCollabHint" class="seat-clear-hint seat-collab-hint hidden" role="status"><span>✦</span>公共作品 0/4096 · 1 人同桌</div>
+    <div id="seatCollabHint" class="seat-clear-hint seat-collab-hint hidden" role="status"><span>✦</span>多人画板实时同步 · 1 人同桌</div>
     <div class="seat-hud-zoom" role="group" aria-label="调整画板视角"><button id="seatZoomOut" type="button" aria-label="缩小">－</button><button id="seatViewReset" type="button" aria-label="恢复正视角" title="回正">⌖</button><button id="seatZoomIn" type="button" aria-label="放大">＋</button></div>
     <div class="seat-hud-actions"><button id="seatBoardAction" class="hidden" type="button">拿起拼好的底板</button><button id="seatDrinkAction" class="hidden" type="button">饮料放桌上</button><button id="seatPutDown" type="button">放下工具</button><button id="seatReturn" type="button">退回托盘</button></div>
   </div>
@@ -71,7 +70,7 @@
     <div class="top-right"><button id="heldDrink" class="held-drink hidden" title="点击喝一口咖啡或饮料"></button><span class="stage-tag"><span class="little-dot"></span> 小店营业中 · 多人在线</span><button class="icon-button" id="helpBtn" aria-label="操作说明">?</button></div>
   </header>
   <div class="scene-labels" id="sceneLabels"></div>
-  <div class="left-notice"><span class="notice-icon">✦</span><span id="noticeText">手作小店 · 选图拼豆、就近取豆，也可以去咖啡角喝一杯。</span></div>
+  <div class="left-notice"><span class="notice-icon">✦</span><span id="noticeText">所有拼豆桌都是多人桌 · 找张桌子加入共创，也可以去咖啡角喝一杯。</span></div>
   <div class="bottom-ui">
     <div class="controls-guide"><div class="keycap-row"><kbd>W</kbd><div><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></div></div><div class="guide-text"><b>自由走动</b><span>店里自由逛 · 领杯饮料边走边喝</span></div></div>
     <div class="quick-actions"><button id="beadStationBtn" class="soft-button">▤ <span>去大豆墙取豆</span></button>
@@ -86,7 +85,7 @@
   <div id="modalBack" class="modal-back hidden"></div>
   <section class="info-modal pattern-modal hidden" id="pattern" role="dialog" aria-modal="true" aria-label="选择拼豆参考图案">
     <button class="close-button float-close" id="patternClose" aria-label="返回工作室">×</button>
-    <div class="pattern-heading"><div class="eyebrow dark">YOUR TABLE · CHOOSE A DESIGN</div><h2>选一张图</h2><p id="patternDeskLabel">A 号桌 · 32×32 空白拼豆板</p>
+    <div class="pattern-heading"><div class="eyebrow dark">SHARED TABLE · CHOOSE A DESIGN</div><h2>给多人桌选一张图</h2><p id="patternDeskLabel">A 号多人桌 · 32×32 空白拼豆板</p>
     <div class="pattern-tip">这里的图案只是参考，<b>桌上不会预先放豆</b>。你可以换画板尺寸，也可以用自己的图片。</div></div>
     <div class="pattern-main"><div class="pattern-library"><div class="pattern-subheading">灵感图库</div><div class="pattern-grid" id="patternGrid"></div></div>
     <aside class="pattern-choice"><div class="pattern-subheading">自己的图</div>
@@ -126,7 +125,7 @@
   </section>
   <section class="editor-modal hidden" id="editor" role="dialog" aria-modal="true" aria-label="拼豆工作台">
     <div class="editor-head">
-      <div><div class="eyebrow dark">CRAFT STUDIO · MAKE YOUR OWN</div><h2 id="editorTitle">拼豆桌 A</h2><p id="editorSub"></p></div>
+      <div><div class="eyebrow dark">CRAFT STUDIO · MAKE TOGETHER</div><h2 id="editorTitle">A 号多人拼豆桌</h2><p id="editorSub"></p></div>
       <button class="close-button" id="editorClose" aria-label="离开工作台">×</button>
     </div>
     <div class="editor-body">
@@ -136,14 +135,14 @@
           <div class="reference-desc"><b id="referenceName">尚未选择参考图</b><small id="referenceDetails">图片仅供参考，不会自动填豆</small><button id="changeReference" class="mini-plain">从图库重选或上传自己的图 ↗</button></div>
           <div class="overlay-controls"><label><input type="checkbox" id="overlayRef"/> 叠加参考</label><label class="overlay-opacity">透明度 <input id="refAlpha" type="range" min="10" max="65" value="28"/></label></div>
         </div>
-        <div class="board-toolbar"><label for="boardSize">画板尺寸</label><select id="boardSize" aria-label="画板尺寸">
+        <div class="board-toolbar"><label for="boardSize">共享画板尺寸</label><select id="boardSize" aria-label="共享画板尺寸；已有作品时不可更换">
           <optgroup label="自由画板"><option value="16">16 × 16</option><option value="32">32 × 32</option><option value="48">48 × 48</option><option value="64">64 × 64</option><option value="96">96 × 96</option><option value="128">128 × 128</option><option value="256">256 × 256</option></optgroup>
           <optgroup label="5mm 标准豆常见底板"><option value="29">29 × 29 · 1 板</option><option value="58">58 × 58 · 4 板</option><option value="87">87 × 87 · 9 板</option><option value="116">116 × 116 · 16 板</option></optgroup>
           <optgroup label="2.6mm 迷你豆示例底板"><option value="52">52 × 52</option><option value="78">78 × 78</option><option value="104">104 × 104</option><option value="156">156 × 156</option><option value="208">208 × 208</option></optgroup>
         </select><div class="zoom-tools"><button id="zoomOut" aria-label="缩小画板">−</button><span id="zoomLabel">100%</span><button id="zoomIn" aria-label="放大画板">＋</button><button id="fitBtn" aria-label="适合屏幕">适合</button></div></div>
         <div class="board-surface"><canvas id="beadCanvas" width="800" height="800" aria-label="可放置拼豆、缩放和拖动画板"></canvas></div>
         <div class="board-footer"><strong id="pieceCount">已放置 0 颗</strong><span id="boardInfo">32×32 · 点击或拖动放豆 · 右键擦除</span></div>
-        <div class="board-hint">点一下放一颗，按住拖动可连续摆一排豆；双针豆笔每次并排放两颗。右键擦除，大画板可缩放和拖动。</div>
+        <div class="board-hint">所有桌子都是多人桌：点一下放一颗，按住拖动可连续摆豆；其他玩家的操作会实时出现在同一块画板上。</div>
       </div>
       <aside class="tools-panel">
         <h3>创作工具 <span>TOOLS</span></h3>
@@ -153,11 +152,10 @@
         <button id="restockWallBtn" class="outline-button wide" type="button">豆墙补豆 ↗</button>
 <div class="tool-equipped" id="toolEquipped">当前工具：尖头镊子 · 点一颗、拖一排连续摆豆</div>
 <div class="selected-color"><span id="colorSwatch"></span><div><b id="colorName">奶茶棕</b><small id="colorCode">C-06 · 演示色号</small></div></div>
-        <div class="save-help">每张桌子都有分类豆盒，也可以到大豆墙取豆。点击画板代表取豆器对准钉位后释放；用右键擦除并将豆子夹回托盘。颜色编号为内部演示色号。</div>
+        <div class="save-help">每张桌子都是云端多人共创画板。大家可以同时拼不同位置；为了保护共同进度，已有作品时不能更换尺寸或整板清空。</div>
         <button id="saveBtn" class="primary-button wide">保存 <span>✓</span></button>
         <button id="ironBtn" class="primary-button wide iron-cta">▦ 拿起底板去熨烫间 <span>→</span></button>
         <button id="exportBtn" class="outline-button wide">导出 PNG ↗</button>
-        <button id="clearBtn" class="text-button">清空当前画板</button>
       </aside>
     </div>
   </section>
@@ -235,12 +233,12 @@
   <section class="info-modal help-modal hidden" id="help" role="dialog" aria-modal="true" aria-label="简单操作">
     <button class="close-button float-close" id="helpClose" aria-label="关闭">×</button>
     <div class="info-body"><h2>第一次来怎么玩</h2>
-      <div class="tiny-gesture-list"><div><span>◉</span><b>移动</b> 手机拖左下摇杆，方向始终对应屏幕；双指缩放</div><div><span>⌖</span><b>找路</b> 点左上角地图，可以自动前往店内区域</div><div><span>✎</span><b>拼豆</b> 拿工具 → 选颜色 → 点或拖动画板放豆</div><div><span>♨</span><b>完成</b> 拿起底板去熨烫，再把成品挂到任意墙上</div></div>
+      <div class="tiny-gesture-list"><div><span>◉</span><b>移动</b> 手机拖左下摇杆，方向始终对应屏幕；双指缩放</div><div><span>⌖</span><b>找路</b> 点左上角地图，可以自动前往店内区域</div><div><span>✦</span><b>共创</b> 所有拼豆桌均为多人桌，拿工具选颜色后即可同时放豆</div><div><span>♨</span><b>完成</b> 拿起底板去熨烫，再把成品挂到任意墙上</div></div>
       <button class="outline-button wide" id="helpTutorial">重新播放拼豆引导</button>
       <button class="primary-button" id="helpOkay">回到店里</button>
     </div>
   </section>
   <section class="info-modal name-modal hidden" id="nameModal" role="dialog" aria-modal="true" aria-label="修改昵称"><button class="close-button float-close" id="nameClose">×</button><div class="info-body"><div class="eyebrow dark">YOUR NICKNAME</div><h2>怎么称呼你？</h2><p>昵称保存在本设备上，联机身份系统将在后续阶段加入。</p><input type="text" maxlength="16" id="nameInput" placeholder="最多 16 字"/><button class="primary-button" id="nameSave">保存昵称 <span>✓</span></button></div></section>
-  <footer class="preview-footnote">BEAD HOUSE · ONLINE STUDIO <span>多人同屋联机 · 心愿墙作品实时同步</span></footer>
+  <footer class="preview-footnote">BEAD HOUSE · ONLINE STUDIO <span>所有拼豆桌多人共创 · 每颗豆实时同步</span></footer>
 </div>
 </body></html>
