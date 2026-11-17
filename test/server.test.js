@@ -56,6 +56,7 @@ test('serves the game and persists the complete shared room', async t => {
   assert.match(sceneCode, /ceiling:'#e3edf1'/);
   assert.match(sceneCode, /CUTE_SCENE_HEX/);
   assert.match(sceneCode, /uniform float uInkPass/);
+  assert.match(sceneCode, /vDepth-58/);
 
   const messages = [
     { t: 'board', id: 'p-test-user', mid: 'board-1', table: 'A', size: 16, cells: 'A'.repeat(256), revision: 1 },

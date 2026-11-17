@@ -1999,7 +1999,7 @@ function prepareGL(){
  const frag='precision mediump float;uniform float uInkPass;varying vec3 vColor;varying float vDepth;'
   +'void main(){if(uInkPass>.5){gl_FragColor=vec4(.408,.451,.529,1.);return;}'
   +'vec3 c=vColor;float l=dot(c,vec3(.299,.587,.114));c=mix(vec3(l),c,.88);'
-  +'vec3 fog=vec3(.976,.965,.945);float f=clamp((vDepth-38.)/92.,0.,.14);c=mix(c,fog,f);'
+  +'vec3 fog=vec3(.976,.965,.945);float f=clamp((vDepth-58.)/130.,0.,.055);c=mix(c,fog,f);'
   +'gl_FragColor=vec4(c,1.);}';
  program=gl.createProgram();gl.attachShader(program,compileShader(gl,gl.VERTEX_SHADER,vert));gl.attachShader(program,compileShader(gl,gl.FRAGMENT_SHADER,frag));gl.linkProgram(program);
  if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));gl.useProgram(program);
