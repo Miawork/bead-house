@@ -258,8 +258,8 @@ function cupPath(c,cx,top,hh,tw,bw){c.beginPath();c.moveTo(cx-tw/2,top);c.lineTo
 function drawCoffeeScene(stage,prog){
  stage=stage||'idle';prog=prog||0;
  const cv=$('coffeeCanvas');if(!cv)return;const c=cv.getContext('2d'),w=cv.width,h=cv.height,d=drinkById(chosenDrink),o=coffeeOpt,cx=w/2;
- c.clearRect(0,0,w,h);const bg=c.createLinearGradient(0,0,0,h);bg.addColorStop(0,'#f4ecdd');bg.addColorStop(1,'#e9ddc9');c.fillStyle=bg;c.fillRect(0,0,w,h);
- c.fillStyle='#d6c09d';c.fillRect(0,314,w,h-314);c.fillStyle='#cbb389';c.fillRect(0,314,w,5);
+ c.clearRect(0,0,w,h);c.fillStyle='#fff7e8';c.fillRect(0,0,w,h);
+ c.fillStyle='#cba57c';c.fillRect(0,314,w,h-314);c.fillStyle='#273149';c.fillRect(0,312,w,4);
  // the tool for the current step, drawn above the cup
  if(stage==='grind'){
    // bean grinder: hopper with beans, a crank, grounds building up
@@ -279,6 +279,11 @@ function drawCoffeeScene(stage,prog){
    c.fillStyle='#616f6e';roundRect(c,96,24,168,78,12);c.fill();c.fillStyle='#51bdb5';c.fillRect(116,38,52,28);c.fillStyle='#3c4746';c.fillRect(184,38,64,12);c.fillRect(184,54,44,10);
    c.fillStyle='#3c4746';c.fillRect(cx-30,102,60,14);c.fillStyle='#333d3c';c.fillRect(cx-5,116,10,24);
  }
+ c.save();c.strokeStyle='#273149';c.lineWidth=4;
+ if(stage==='grind'){roundRect(c,cx-54,26,108,70,12);c.stroke();c.strokeRect(cx-30,120,60,16);}
+ else if(stage==='steam'){c.strokeRect(cx-8,20,16,78);roundRect(c,cx-42,104,84,66,8);c.stroke();}
+ else{roundRect(c,96,24,168,78,12);c.stroke();c.strokeRect(cx-30,102,60,14);}
+ c.restore();
  // cup with its current contents
  const cupTop=190,cupH=118,tw=o.size==='S'?96:o.size==='L'?138:118,bw=tw*0.8;
  const innerTop=cupTop+8,innerH=cupH-16;
@@ -292,13 +297,14 @@ function drawCoffeeScene(stage,prog){
  if(o.whip&&coffeeMade){c.fillStyle='#fff7ee';c.beginPath();c.arc(cx,liqTop-6,tw*0.33,Math.PI,0);c.fill();c.beginPath();c.arc(cx-tw*0.15,liqTop-14,tw*0.14,Math.PI,0);c.fill();c.beginPath();c.arc(cx+tw*0.15,liqTop-14,tw*0.14,Math.PI,0);c.fill();}
  if(d.fizz&&fill>.2){c.fillStyle='#ffffff8a';for(let i=0;i<10;i++){const bx=cx-tw/2+6+Math.abs(Math.sin(i*2.3))*(tw-12),by=liqTop+6+((i*19)%Math.max(8,cupTop+cupH-liqTop-8));c.beginPath();c.arc(bx,by,1.7,0,6.3);c.fill();}}
  c.restore();
- c.lineWidth=3;c.strokeStyle='#ffffff';cupPath(c,cx,cupTop,cupH,tw,bw);c.stroke();
- c.lineWidth=7;c.strokeStyle='#fbf6ee';c.beginPath();c.arc(cx+tw/2+3,cupTop+cupH*0.42,19,-1.1,1.1);c.stroke();
+ c.lineWidth=4;c.strokeStyle='#273149';cupPath(c,cx,cupTop,cupH,tw,bw);c.stroke();
+ c.lineWidth=10;c.strokeStyle='#273149';c.beginPath();c.arc(cx+tw/2+3,cupTop+cupH*0.42,19,-1.1,1.1);c.stroke();
+ c.lineWidth=5;c.strokeStyle='#fbf6ee';c.beginPath();c.arc(cx+tw/2+3,cupTop+cupH*0.42,19,-1.1,1.1);c.stroke();
  if(stage==='extract'||stage==='mix'){c.fillStyle=d.drink;c.fillRect(cx-4,140,8,Math.max(0,liqTop-140));} // pour stream
  if(d.hot&&!o.ice&&fill>.25){c.save();for(let i=0;i<3;i++){const t=(performance.now()/700+i*0.5)%1;c.globalAlpha=(1-t)*0.3;c.fillStyle='#fff';c.beginPath();c.arc(cx-20+i*20+Math.sin(t*6+i)*6,liqTop-18-t*54,7-t*3,0,6.3);c.fill();}c.restore();}
  if(coffeeMode==='self'&&!coffeeMade&&!coffeeBusy&&coffeeSteps[coffeeStepIdx]){
   const label=coffeeSteps[coffeeStepIdx].label.replace(/^[①②③④⑤⑥⑦⑧⑨⑩]\s*/,''),text=`点击设备 · ${label}`;
-  c.font='700 14px sans-serif';const width=Math.min(w-28,c.measureText(text).width+32);roundRect(c,(w-width)/2,h-49,width,34,17);c.fillStyle='#5e4a3fe8';c.fill();c.fillStyle='#fffaf1';c.textAlign='center';c.textBaseline='middle';c.fillText(text,w/2,h-32);
+  c.font='800 14px monospace';const width=Math.min(w-28,c.measureText(text).width+32);roundRect(c,(w-width)/2,h-49,width,34,8);c.fillStyle='#f2bb58';c.fill();c.lineWidth=3;c.strokeStyle='#273149';c.stroke();c.fillStyle='#273149';c.textAlign='center';c.textBaseline='middle';c.fillText(text,w/2,h-32);
  }
 }
 // What hands-on steps this drink needs.
@@ -1969,28 +1975,25 @@ function renderPeerTags(){
 }
 function compileShader(gl,type,source){const s=gl.createShader(type);gl.shaderSource(s,source);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw Error(gl.getShaderInfoLog(s));return s;}
 function prepareGL(){
- // Studio lighting: warm key + cool fill + hemisphere ambient, a soft broad
- // specular and a rim term for form separation, then a gentle tone/fog pass.
- const vert='attribute vec3 aPos;attribute vec3 aNormal;attribute vec3 aColor;uniform mat4 uMatrix;uniform vec3 uCam;varying vec3 vColor;varying float vDepth;'
+ // Pastel arcade lighting: a stepped two-tone fill and a separate expanded ink shell.
+ // The room remains spatial and interactive, but reads like the outlined 2D reference art.
+ const vert='attribute vec3 aPos;attribute vec3 aNormal;attribute vec3 aColor;uniform mat4 uMatrix;uniform vec3 uCam;uniform float uOutline;varying vec3 vColor;varying float vDepth;'
   +'void main(){vec3 N=normalize(aNormal);vec3 V=normalize(uCam-aPos);'
   +'vec3 Lk=normalize(vec3(.42,.95,.52));vec3 Lf=normalize(vec3(-.55,.38,-.6));'
   +'float kd=max(dot(N,Lk),0.);float fd=max(dot(N,Lf),0.);'
-  +'float hemi=.5+.5*N.y;vec3 amb=mix(vec3(.57,.54,.49),vec3(.76,.74,.69),hemi);' // soft neutral-warm hemisphere ambient (less yellow)
-  +'vec3 warm=vec3(1.,.96,.88);vec3 cool=vec3(.90,.93,.98);'                        // gentle warm key + light cool fill to balance
-  +'vec3 lit=amb+warm*kd*.34+cool*fd*.12;'
-  +'vec3 H=normalize(Lk+V);float spec=pow(max(dot(N,H),0.),16.)*.15;'
-  +'float rim=pow(1.-max(dot(N,V),0.),3.)*.10;'
-  +'vColor=aColor*lit+vec3(spec)+vec3(1.,.96,.88)*rim;'
-  +'vec4 p=uMatrix*vec4(aPos,1.);gl_Position=p;vDepth=p.w;}';
- const frag='precision mediump float;varying vec3 vColor;varying float vDepth;'
-  +'void main(){vec3 c=vColor;c=c/(c*0.17+0.9);'          // soft shoulder, keeps pastels
-  +'float l=dot(c,vec3(.299,.587,.114));c=mix(vec3(l),c,1.10);' // modest saturation for a cute-but-clean look
-  +'c*=vec3(1.015,1.0,0.965);'                              // very gentle warm grade (no longer too yellow)
-  +'vec3 fog=vec3(.92,.91,.89);float f=clamp((vDepth-46.)/90.,0.,.16);c=mix(c,fog,f);'
+  +'float lightBand=.72+floor((kd*.78+fd*.22)*3.+.5)/3.*.24;'
+  +'float rim=step(.72,pow(1.-max(dot(N,V),0.),2.));'
+  +'vColor=mix(aColor,vec3(1.,.98,.92),.035)*lightBand+vec3(.035,.05,.08)*rim;'
+  +'vec4 p=uMatrix*vec4(aPos+N*uOutline,1.);gl_Position=p;vDepth=p.w;}';
+ const frag='precision mediump float;uniform float uInkPass;varying vec3 vColor;varying float vDepth;'
+  +'void main(){if(uInkPass>.5){gl_FragColor=vec4(.153,.192,.286,1.);return;}'
+  +'vec3 c=floor(vColor*9.+.5)/9.;c=c/(c*.10+.94);'
+  +'float l=dot(c,vec3(.299,.587,.114));c=mix(vec3(l),c,1.05);'
+  +'vec3 fog=vec3(.94,.94,.89);float f=clamp((vDepth-48.)/96.,0.,.12);c=mix(c,fog,f);'
   +'gl_FragColor=vec4(c,1.);}';
  program=gl.createProgram();gl.attachShader(program,compileShader(gl,gl.VERTEX_SHADER,vert));gl.attachShader(program,compileShader(gl,gl.FRAGMENT_SHADER,frag));gl.linkProgram(program);
  if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));gl.useProgram(program);
- loc={p:gl.getAttribLocation(program,'aPos'),n:gl.getAttribLocation(program,'aNormal'),c:gl.getAttribLocation(program,'aColor'),m:gl.getUniformLocation(program,'uMatrix'),cam:gl.getUniformLocation(program,'uCam')};
+ loc={p:gl.getAttribLocation(program,'aPos'),n:gl.getAttribLocation(program,'aNormal'),c:gl.getAttribLocation(program,'aColor'),m:gl.getUniformLocation(program,'uMatrix'),cam:gl.getUniformLocation(program,'uCam'),outline:gl.getUniformLocation(program,'uOutline'),ink:gl.getUniformLocation(program,'uInkPass')};
  // Separate soft-shadow program: flat black discs with per-vertex alpha, blended onto the floor.
  const sv='attribute vec3 aPos;attribute float aA;uniform mat4 uMatrix;varying float vA;void main(){gl_Position=uMatrix*vec4(aPos,1.);vA=aA;}';
  const sf='precision mediump float;varying float vA;void main(){gl_FragColor=vec4(0.,0.,0.,vA);}';
@@ -2002,7 +2005,7 @@ function prepareGL(){
  partProg=gl.createProgram();gl.attachShader(partProg,compileShader(gl,gl.VERTEX_SHADER,pv));gl.attachShader(partProg,compileShader(gl,gl.FRAGMENT_SHADER,pf));gl.linkProgram(partProg);
  partLoc={p:gl.getAttribLocation(partProg,'aPos'),c:gl.getAttribLocation(partProg,'aCol'),m:gl.getUniformLocation(partProg,'uMatrix')};
  glParts=gl.createBuffer();
- gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(.925,.915,.90,1);
+ gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(.975,.949,.886,1);
  glStatic=gl.createBuffer();glPlayer=gl.createBuffer();glShadowStatic=gl.createBuffer();glShadowPlayer=gl.createBuffer();
  phSetupReferenceGL();updateStatic();updateStaticShadows();
 }
@@ -2071,7 +2074,12 @@ function drawParticles(){
  gl.depthMask(true);gl.enable(gl.CULL_FACE);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.disable(gl.BLEND);gl.useProgram(program);
 }
 function updateStatic(){if(!gl)return;const m=buildStatic();gl.bindBuffer(gl.ARRAY_BUFFER,glStatic);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(m.data),gl.STATIC_DRAW);staticVertexCount=m.count;}
-function drawMesh(buffer,count){gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.vertexAttribPointer(loc.p,3,gl.FLOAT,false,36,0);gl.vertexAttribPointer(loc.n,3,gl.FLOAT,false,36,12);gl.vertexAttribPointer(loc.c,3,gl.FLOAT,false,36,24);gl.enableVertexAttribArray(loc.p);gl.enableVertexAttribArray(loc.n);gl.enableVertexAttribArray(loc.c);gl.drawArrays(gl.TRIANGLES,0,count);}
+function drawMesh(buffer,count){
+ gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.vertexAttribPointer(loc.p,3,gl.FLOAT,false,36,0);gl.vertexAttribPointer(loc.n,3,gl.FLOAT,false,36,12);gl.vertexAttribPointer(loc.c,3,gl.FLOAT,false,36,24);gl.enableVertexAttribArray(loc.p);gl.enableVertexAttribArray(loc.n);gl.enableVertexAttribArray(loc.c);
+ // Draw back faces of a slightly expanded copy first to form a stable navy silhouette.
+ gl.cullFace(gl.FRONT);gl.depthMask(false);gl.uniform1f(loc.outline,.026);gl.uniform1f(loc.ink,1);gl.drawArrays(gl.TRIANGLES,0,count);
+ gl.depthMask(true);gl.cullFace(gl.BACK);gl.uniform1f(loc.outline,0);gl.uniform1f(loc.ink,0);gl.drawArrays(gl.TRIANGLES,0,count);
+}
 function resize(){const oldAspect=layout.aspect;layout.width=scene.clientWidth;layout.height=scene.clientHeight;layout.aspect=layout.width/Math.max(1,layout.height);
  if(PH.active&&PH.viewAuto&&Math.abs(layout.aspect-oldAspect)>.02)phResetDeskView();
  // Native high-DPI backing store: wall images remain legible and diagonal model edges stay
@@ -2223,22 +2231,21 @@ function buildPalette(){const root=$('palette');root.innerHTML='';for(const s of
 function updatePaletteQuantity(){document.querySelectorAll('.bead-option').forEach(b=>{b.dataset.qty=String(tray[b.dataset.color]||0);b.title=`${b.dataset.color} · 托盘剩余 ${tray[b.dataset.color]||0} 颗`;});}
 const CELL=10;
 function drawBeadCell(i){const n=board().size,x=i%n,y=Math.floor(i/n),cx=x*CELL+5,cy=y*CELL+5,c=beadBackCtx,id=current()[i];
- c.fillStyle='#f6ead7';c.fillRect(x*CELL,y*CELL,CELL,CELL);
- c.beginPath();c.arc(cx,cy,4.08,0,Math.PI*2);c.fillStyle=id?colorLookup[id]:'#e5d5bd';c.fill();
- c.lineWidth=.5;c.strokeStyle=id?'#6b544533':'#c2a98b';c.stroke();
+ c.fillStyle='#fffaf0';c.fillRect(x*CELL,y*CELL,CELL,CELL);
+ c.beginPath();c.arc(cx,cy,id?4.08:1.12,0,Math.PI*2);c.fillStyle=id?colorLookup[id]:'#d8cbb8';c.fill();
+ c.lineWidth=id?.82:.34;c.strokeStyle=id?'#273149':'#b5a790';c.stroke();
  if(id){
   const fin=finishOf(id);
   if(fin==='glow'){c.strokeStyle='#d8ff8e7a';c.lineWidth=1.4;c.beginPath();c.arc(cx,cy,4.4,0,Math.PI*2);c.stroke();} // luminous halo
-  c.fillStyle='#00000016';c.beginPath();c.arc(cx,cy,fin==='jelly'?1.25:.98,0,Math.PI*2);c.fill(); // fuse-bead hole (wider when jelly/translucent)
-  c.strokeStyle='#5b43301c';c.lineWidth=.8;c.beginPath();c.arc(cx+.4,cy+.5,3.8,.25,1.75);c.stroke(); // lower contact shade
+  c.fillStyle='#27314966';c.beginPath();c.arc(cx,cy,fin==='jelly'?1.25:.98,0,Math.PI*2);c.fill(); // fuse-bead hole (wider when jelly/translucent)
   if(fin==='metal'){const g=c.createLinearGradient(cx-4,cy-4,cx+4,cy+4);g.addColorStop(0,'#ffffff7a');g.addColorStop(.5,'#ffffff12');g.addColorStop(1,'#5b5b6b33');c.fillStyle=g;c.beginPath();c.arc(cx,cy,3.9,0,Math.PI*2);c.fill();} // pearl sheen
   if(fin==='glitter'){c.fillStyle='#ffffffcc';for(let s=0;s<4;s++){const a=s*1.9+(x+y),rr=2.6;c.beginPath();c.arc(cx+Math.cos(a)*rr,cy+Math.sin(a)*rr,.42,0,Math.PI*2);c.fill();}} // sparkle flecks
-  c.fillStyle=fin==='jelly'?'#ffffffa6':'#ffffff62';c.beginPath();c.arc(cx-1.2,cy-1.5,fin==='jelly'?1.5:1.2,0,Math.PI*2);c.fill(); // glossy/glass highlight
- }else{c.beginPath();c.arc(cx,cy,.92,0,Math.PI*2);c.fillStyle='#faf0e0';c.fill();}
+  if(fin!=='solid'){c.fillStyle=fin==='jelly'?'#ffffffa6':'#ffffff70';c.beginPath();c.arc(cx-1.2,cy-1.5,fin==='jelly'?1.5:1.05,0,Math.PI*2);c.fill();} // special finishes keep their material cue
+ }
 }
 function rebuildBoardRaster(){const n=board().size;beadBack.width=n*CELL;beadBack.height=n*CELL;beadBackCtx=beadBack.getContext('2d',{alpha:false});for(let i=0;i<n*n;i++)drawBeadCell(i);drawViewport();}
 function cropInfo(){const n=board().size,visible=n/zoom,maxPan=(n-visible)/2;panX=Math.max(-maxPan,Math.min(maxPan,panX));panY=Math.max(-maxPan,Math.min(maxPan,panY));return{visible,sx:(n-visible)/2+panX,sy:(n-visible)/2+panY};}
-function drawViewport(){const canvas=$('beadCanvas'),c=canvas.getContext('2d',{alpha:false}),s=cropInfo();c.imageSmoothingEnabled=zoom<=1.05;c.fillStyle='#f6ead7';c.fillRect(0,0,800,800);c.drawImage(beadBack,s.sx*CELL,s.sy*CELL,s.visible*CELL,s.visible*CELL,0,0,800,800);
+function drawViewport(){const canvas=$('beadCanvas'),c=canvas.getContext('2d',{alpha:false}),s=cropInfo();c.imageSmoothingEnabled=zoom<=1.05;c.fillStyle='#fffaf0';c.fillRect(0,0,800,800);c.drawImage(beadBack,s.sx*CELL,s.sy*CELL,s.visible*CELL,s.visible*CELL,0,0,800,800);
  if(referenceVisible&&referenceByTable[activeTable]){
   let img=referenceCanvases[activeTable];if(!img){img=imageForReference(referenceByTable[activeTable]);referenceCanvases[activeTable]=img;}
   if(img&&img.width&&img.height){c.globalAlpha=Number($('refAlpha').value)/100;c.drawImage(img,(s.sx/board().size)*img.width,(s.sy/board().size)*img.height,(s.visible/board().size)*img.width,(s.visible/board().size)*img.height,0,0,800,800);c.globalAlpha=1;}
@@ -2334,16 +2341,17 @@ let ironProgressValue=0,restoredIronState=null;
 function paintIronCell(c,x,y,step,id,technique,level,melt,bg){const cx=(x+.5)*step,cy=(y+.5)*step,hex=colorLookup[id],r=step*(.42+.11*melt);
  if(technique==='crystal'){
   c.save();c.globalAlpha=.72+.28*melt;c.fillStyle=mixHex(hex,'#e9ffff',.20);c.beginPath();c.moveTo(cx,cy-r);c.lineTo(cx+r,cy);c.lineTo(cx,cy+r);c.lineTo(cx-r,cy);c.closePath();c.fill();
+  c.strokeStyle='#273149';c.lineWidth=Math.max(.45,step*.045);c.stroke();
   c.strokeStyle='rgba(255,255,255,.62)';c.lineWidth=Math.max(.45,step*.055);c.beginPath();c.moveTo(cx-r*.68,cy);c.lineTo(cx,cy-r*.68);c.lineTo(cx+r*.35,cy);c.stroke();c.restore();return;
  }
  if(technique==='towel'){
-  c.fillStyle=ironShade(hex,melt*.82);c.beginPath();c.arc(cx,cy,r*1.03,0,6.2832);c.fill();c.strokeStyle='rgba(255,245,226,.46)';c.lineWidth=Math.max(.35,step*.05);
+  c.fillStyle=ironShade(hex,melt*.82);c.beginPath();c.arc(cx,cy,r*1.03,0,6.2832);c.fill();c.strokeStyle='#273149';c.lineWidth=Math.max(.42,step*.04);c.stroke();c.strokeStyle='rgba(255,245,226,.46)';c.lineWidth=Math.max(.35,step*.05);
   for(let k=0;k<3;k++){const a=((x*17+y*29+k*41)%100)/100*Math.PI*2,rr=r*(.25+k*.17);c.beginPath();c.moveTo(cx+Math.cos(a)*rr*.25,cy+Math.sin(a)*rr*.25);c.lineTo(cx+Math.cos(a)*rr,cy+Math.sin(a)*rr);c.stroke();}
   return;
  }
  c.fillStyle=ironShade(hex,melt);
- if(level==='flat'&&melt>.82)c.fillRect(x*step-.2,y*step-.2,step+.5,step+.5);
- else{c.beginPath();c.arc(cx,cy,r,0,6.2832);c.fill();const hole=step*(level==='light'?.16:level==='medium'?.065:0)*(1-melt*.72);if(hole>.35){c.fillStyle=bg;c.beginPath();c.arc(cx,cy,hole,0,6.2832);c.fill();}}
+ if(level==='flat'&&melt>.82){c.fillRect(x*step-.2,y*step-.2,step+.5,step+.5);c.strokeStyle='#273149';c.lineWidth=Math.max(.35,step*.03);c.strokeRect(x*step,y*step,step,step);}
+ else{c.beginPath();c.arc(cx,cy,r,0,6.2832);c.fill();c.strokeStyle='#273149';c.lineWidth=Math.max(.42,step*.04);c.stroke();const hole=step*(level==='light'?.16:level==='medium'?.065:0)*(1-melt*.72);if(hole>.35){c.fillStyle=bg;c.beginPath();c.arc(cx,cy,hole,0,6.2832);c.fill();}}
  if(technique==='glitter'&&((x*13+y*7)%9<3)){const sr=Math.max(1,step*.16);c.strokeStyle='rgba(255,255,246,.92)';c.lineWidth=Math.max(.45,step*.055);c.beginPath();c.moveTo(cx-sr,cy);c.lineTo(cx+sr,cy);c.moveTo(cx,cy-sr);c.lineTo(cx,cy+sr);c.stroke();}
 }
 function drawProductOverlay(c,w,product){c.save();
@@ -2703,22 +2711,23 @@ function drawFallback(){
  if(!ctx2d)return;
  const c=ctx2d,s=renderScale,w=layout.width,h=layout.height;
  c.setTransform(s,0,0,s,0,0);c.imageSmoothingEnabled=false;c.lineJoin='round';c.lineCap='round';c.clearRect(0,0,w,h);
- // Deeper neutral values keep the software scene from dissolving into a pale haze.
- const grad=c.createLinearGradient(0,0,w,h);grad.addColorStop(0,'#f7efe4');grad.addColorStop(1,'#dcc7b3');c.fillStyle=grad;c.fillRect(0,0,w,h);
+ // Match the WebGL pastel-arcade scene when a browser falls back to Canvas2D.
+ const grad=c.createLinearGradient(0,0,w,h);grad.addColorStop(0,'#fffaf0');grad.addColorStop(1,'#ead9bd');c.fillStyle=grad;c.fillRect(0,0,w,h);
  // Canvas has no depth buffer. Queue every projected primitive and paint far-to-near so
  // furniture and hand-held tools do not leak through one another as the camera moves.
  const drawQueue=[];
  const depthOf=pts=>pts.reduce((sum,p)=>sum+dot(sub(p,camPos),camForward),0)/pts.length;
  const enqueue=(depth,draw)=>drawQueue.push({depth,order:drawQueue.length,draw});
  const flush=()=>{drawQueue.sort((a,b)=>b.depth-a.depth||a.order-b.order);for(const item of drawQueue)item.draw();};
- const polygon=(pts,color,edge=null)=>{const ps=pts.map(worldToScreen);if(ps.some(p=>!p))return;enqueue(depthOf(pts),()=>{c.beginPath();ps.forEach((p,i)=>i?c.lineTo(p.x,p.y):c.moveTo(p.x,p.y));c.closePath();c.fillStyle=color;c.fill();if(edge){c.strokeStyle=edge;c.lineWidth=.62;c.stroke();}});};
+ const ink='#273149';
+ const polygon=(pts,color,edge=null)=>{const ps=pts.map(worldToScreen);if(ps.some(p=>!p))return;enqueue(depthOf(pts),()=>{c.beginPath();ps.forEach((p,i)=>i?c.lineTo(p.x,p.y):c.moveTo(p.x,p.y));c.closePath();c.fillStyle=color;c.fill();if(edge){c.strokeStyle=edge;c.lineWidth=1.12;c.stroke();}});};
  const box=(x,y,z,wd,ht,dp,color)=>{const L=x-wd/2,R=x+wd/2,B=y-ht/2,T=y+ht/2,N=z-dp/2,F=z+dp/2;
-  const edge=shade(color,.67);
+  const edge=ink;
   polygon([[L,B,F],[R,B,F],[R,T,F],[L,T,F]],shade(color,.94),edge);
   polygon([[R,B,F],[R,B,N],[R,T,N],[R,T,F]],shade(color,.73),edge);
   polygon([[L,T,N],[L,T,F],[R,T,F],[R,T,N]],shade(color,1.04),edge);
  };
- const circle=(pos,r,color,depthBias=0)=>{const point=worldToScreen(pos),other=worldToScreen([pos[0]+r,pos[1],pos[2]]);if(!point||!other)return;const rad=Math.max(.8,Math.hypot(point.x-other.x,point.y-other.y));enqueue(depthOf([pos])+depthBias,()=>{c.fillStyle=color;c.beginPath();c.arc(point.x,point.y,rad,0,Math.PI*2);c.fill();if(rad>=1.55){c.strokeStyle=shade(color,.62);c.lineWidth=Math.min(.82,Math.max(.46,rad*.075));c.stroke();}});};
+ const circle=(pos,r,color,depthBias=0)=>{const point=worldToScreen(pos),other=worldToScreen([pos[0]+r,pos[1],pos[2]]);if(!point||!other)return;const rad=Math.max(.8,Math.hypot(point.x-other.x,point.y-other.y));enqueue(depthOf([pos])+depthBias,()=>{c.fillStyle=color;c.beginPath();c.arc(point.x,point.y,rad,0,Math.PI*2);c.fill();if(rad>=1.55){c.strokeStyle=ink;c.lineWidth=Math.min(1.35,Math.max(.65,rad*.09));c.stroke();}});};
  polygon([[-17,0,-19.7],[17,0,-19.7],[17,0,21],[-17,0,21]],'#ddc2a1');
  for(let x=-16.5;x<17;x+=1.12)box(x,-.03,1,1,.045,41.2,Math.floor(x)%2?'#e8cfaf':'#e3c5a0');
  polygon([[-17,0,-19.7],[17,0,-19.7],[17,6.7,-19.7],[-17,6.7,-19.7]],'#f3e5d4');
