@@ -121,10 +121,10 @@ function gradientRank(a,b){const A=hexToHsl(a.hex),B=hexToHsl(b.hex),na=A[1]<.12
  if(na&&nb)return B[2]-A[2];           // neutrals ordered light→dark
  if(Math.abs(A[0]-B[0])>.5)return A[0]-B[0]; // chromatic ordered by hue (red→orange→…→violet)
  return B[2]-A[2];}                    // same hue: lighter tint first
-// Warm cream-and-timber palette: bright almond walls, honey-oak flooring and gentle
-// butter / lake-blue / apricot accents feel cheerful without using pure white or neon colour.
-// Real fuse-bead colours stay exact so completed artwork remains the visual focus.
-const CUTE_SCENE={outline:'#171717',ink:'#766d6b',paper:'#fff8ed',ceiling:'#f1e8dc',wall:'#f7eee2',wallAlt:'#f3e4da',floor:'#dec7aa',floorAlt:'#e5d2b8',trim:'#cdb08f',cream:'#f2e2cf',tan:'#dabd99',brown:'#ad8a6d',yellow:'#e6c875',blue:'#b5d1d0',pink:'#e6c0c3',purple:'#cec2d7',mint:'#b9d2bf',peach:'#e9c7b5',green:'#94b69f'};
+// Interior-trend palette inspired by warm whites, khaki/tan, sage, blush and pottery hues:
+// a bright Swiss-coffee shell, honey oak, muted botanicals and espresso linework. Real
+// fuse-bead colours stay exact so completed artwork remains the visual focus.
+const CUTE_SCENE={outline:'#4b3f39',ink:'#6c574b',paper:'#fbf3e7',ceiling:'#f8efe2',wall:'#f1e3d0',wallAlt:'#efdcd4',floor:'#ccaa80',floorAlt:'#d8bc96',trim:'#bd9270',cream:'#ebdbc5',tan:'#c7a27a',brown:'#82604c',yellow:'#d9b86b',blue:'#b1c5bc',pink:'#dbb8b7',purple:'#bbaab5',mint:'#aebfaa',peach:'#cd8d70',green:'#758d76'};
 const CUTE_BEAD_HEX=new Set(swatches.flatMap(s=>[s.hex,glHex(s.id)]).map(v=>v.toUpperCase()));
 const CUTE_SCENE_HEX=new Set(Object.values(CUTE_SCENE).map(v=>v.toUpperCase()));
 function cuteSceneColor(hex){
@@ -1987,7 +1987,7 @@ function renderPeerTags(){
 }
 function compileShader(gl,type,source){const s=gl.createShader(type);gl.shaderSource(s,source);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw Error(gl.getShaderInfoLog(s));return s;}
 function prepareGL(){
- // Illustrated-room lighting: soft faces plus a separate black hull around every solid.
+ // Soft interior lighting with espresso-brown contouring instead of a hard black shell.
  // This is applied to the world mesh, not the surrounding webpage UI.
  const vert='attribute vec3 aPos;attribute vec3 aNormal;attribute vec3 aColor;uniform mat4 uMatrix;uniform vec3 uCam;uniform float uOutline;varying vec3 vColor;varying float vDepth;'
   +'void main(){vec3 N=normalize(aNormal);vec3 V=normalize(uCam-aPos);'
@@ -1997,9 +1997,9 @@ function prepareGL(){
   +'vColor=aColor*(.91+light*.09);'
   +'vec4 p=uMatrix*vec4(aPos+N*uOutline,1.);gl_Position=p;vDepth=p.w;}';
  const frag='precision mediump float;uniform float uInkPass;varying vec3 vColor;varying float vDepth;'
-  +'void main(){if(uInkPass>.5){gl_FragColor=vec4(.09,.09,.09,1.);return;}'
-  +'vec3 c=vColor;float l=dot(c,vec3(.299,.587,.114));c=mix(vec3(l),c,.92);'
-  +'vec3 fog=vec3(.969,.937,.894);float f=clamp((vDepth-58.)/130.,0.,.055);c=mix(c,fog,f);'
+  +'void main(){if(uInkPass>.5){gl_FragColor=vec4(.294,.247,.224,1.);return;}'
+  +'vec3 c=vColor;float l=dot(c,vec3(.299,.587,.114));c=mix(vec3(l),c,.90);'
+  +'vec3 fog=vec3(.969,.929,.871);float f=clamp((vDepth-58.)/130.,0.,.055);c=mix(c,fog,f);'
   +'gl_FragColor=vec4(c,1.);}';
  program=gl.createProgram();gl.attachShader(program,compileShader(gl,gl.VERTEX_SHADER,vert));gl.attachShader(program,compileShader(gl,gl.FRAGMENT_SHADER,frag));gl.linkProgram(program);
  if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));gl.useProgram(program);
@@ -2015,7 +2015,7 @@ function prepareGL(){
  partProg=gl.createProgram();gl.attachShader(partProg,compileShader(gl,gl.VERTEX_SHADER,pv));gl.attachShader(partProg,compileShader(gl,gl.FRAGMENT_SHADER,pf));gl.linkProgram(partProg);
  partLoc={p:gl.getAttribLocation(partProg,'aPos'),c:gl.getAttribLocation(partProg,'aCol'),m:gl.getUniformLocation(partProg,'uMatrix')};
  glParts=gl.createBuffer();
- gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(.969,.937,.894,1);
+ gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(.969,.929,.871,1);
  glStatic=gl.createBuffer();glPlayer=gl.createBuffer();glShadowStatic=gl.createBuffer();glShadowPlayer=gl.createBuffer();
  phSetupReferenceGL();updateStatic();updateStaticShadows();
 }
@@ -2086,12 +2086,8 @@ function drawParticles(){
 function updateStatic(){if(!gl)return;const m=buildStatic();gl.bindBuffer(gl.ARRAY_BUFFER,glStatic);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(m.data),gl.STATIC_DRAW);staticVertexCount=m.count;}
 function drawMesh(buffer,count){
  gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.vertexAttribPointer(loc.p,3,gl.FLOAT,false,36,0);gl.vertexAttribPointer(loc.n,3,gl.FLOAT,false,36,12);gl.vertexAttribPointer(loc.c,3,gl.FLOAT,false,36,24);gl.enableVertexAttribArray(loc.p);gl.enableVertexAttribArray(loc.n);gl.enableVertexAttribArray(loc.c);
- // Fill the complete object set first so its depth survives. Drawing the expanded hull
- // afterwards keeps a separate border around each table, chair, cup and decoration instead
- // of letting later fills erase the contour of earlier objects in the shared mesh buffer.
+ gl.cullFace(gl.FRONT);gl.depthMask(false);gl.uniform1f(loc.outline,.022);gl.uniform1f(loc.ink,1);gl.drawArrays(gl.TRIANGLES,0,count);
  gl.depthMask(true);gl.cullFace(gl.BACK);gl.uniform1f(loc.outline,0);gl.uniform1f(loc.ink,0);gl.drawArrays(gl.TRIANGLES,0,count);
- gl.cullFace(gl.FRONT);gl.depthMask(false);gl.uniform1f(loc.outline,.024);gl.uniform1f(loc.ink,1);gl.drawArrays(gl.TRIANGLES,0,count);
- gl.depthMask(true);gl.cullFace(gl.BACK);gl.uniform1f(loc.outline,0);gl.uniform1f(loc.ink,0);
 }
 function resize(){const oldAspect=layout.aspect;layout.width=scene.clientWidth;layout.height=scene.clientHeight;layout.aspect=layout.width/Math.max(1,layout.height);
  if(PH.active&&PH.viewAuto&&Math.abs(layout.aspect-oldAspect)>.02)phResetDeskView();
@@ -2732,14 +2728,14 @@ function drawFallback(){
  const depthOf=pts=>pts.reduce((sum,p)=>sum+dot(sub(p,camPos),camForward),0)/pts.length;
  const enqueue=(depth,draw)=>drawQueue.push({depth,order:drawQueue.length,draw});
  const flush=()=>{drawQueue.sort((a,b)=>b.depth-a.depth||a.order-b.order);for(const item of drawQueue)item.draw();};
- const polygon=(pts,color,edge=null)=>{const ps=pts.map(worldToScreen);if(ps.some(p=>!p))return;enqueue(depthOf(pts),()=>{c.beginPath();ps.forEach((p,i)=>i?c.lineTo(p.x,p.y):c.moveTo(p.x,p.y));c.closePath();c.fillStyle=cuteSceneColor(color);c.fill();if(edge){c.strokeStyle=edge;c.lineWidth=1.8;c.stroke();}});};
+ const polygon=(pts,color,edge=null)=>{const ps=pts.map(worldToScreen);if(ps.some(p=>!p))return;enqueue(depthOf(pts),()=>{c.beginPath();ps.forEach((p,i)=>i?c.lineTo(p.x,p.y):c.moveTo(p.x,p.y));c.closePath();c.fillStyle=cuteSceneColor(color);c.fill();if(edge){c.strokeStyle=edge;c.lineWidth=1.55;c.stroke();}});};
  const box=(x,y,z,wd,ht,dp,color)=>{const L=x-wd/2,R=x+wd/2,B=y-ht/2,T=y+ht/2,N=z-dp/2,F=z+dp/2;
   color=cuteSceneColor(color);const edge=CUTE_SCENE.outline;
   polygon([[L,B,F],[R,B,F],[R,T,F],[L,T,F]],shade(color,.98),edge);
   polygon([[R,B,F],[R,B,N],[R,T,N],[R,T,F]],shade(color,.90),edge);
   polygon([[L,T,N],[L,T,F],[R,T,F],[R,T,N]],shade(color,1.015),edge);
  };
- const circle=(pos,r,color,depthBias=0)=>{const point=worldToScreen(pos),other=worldToScreen([pos[0]+r,pos[1],pos[2]]);if(!point||!other)return;const rad=Math.max(.8,Math.hypot(point.x-other.x,point.y-other.y));enqueue(depthOf([pos])+depthBias,()=>{c.fillStyle=cuteSceneColor(color);c.beginPath();c.arc(point.x,point.y,rad,0,Math.PI*2);c.fill();if(rad>=1.55){c.strokeStyle=CUTE_SCENE.outline;c.lineWidth=Math.min(2.2,Math.max(1,rad*.13));c.stroke();}});};
+ const circle=(pos,r,color,depthBias=0)=>{const point=worldToScreen(pos),other=worldToScreen([pos[0]+r,pos[1],pos[2]]);if(!point||!other)return;const rad=Math.max(.8,Math.hypot(point.x-other.x,point.y-other.y));enqueue(depthOf([pos])+depthBias,()=>{c.fillStyle=cuteSceneColor(color);c.beginPath();c.arc(point.x,point.y,rad,0,Math.PI*2);c.fill();if(rad>=1.55){c.strokeStyle=CUTE_SCENE.outline;c.lineWidth=Math.min(1.9,Math.max(.9,rad*.115));c.stroke();}});};
  polygon([[-17,0,-19.7],[17,0,-19.7],[17,0,21],[-17,0,21]],CUTE_SCENE.floor);
  for(let x=-16.5;x<17;x+=1.12)box(x,-.03,1,1,.045,41.2,Math.floor(x)%2?CUTE_SCENE.floorAlt:CUTE_SCENE.floor);
  polygon([[-17,0,-19.7],[17,0,-19.7],[17,6.7,-19.7],[-17,6.7,-19.7]],CUTE_SCENE.wall);

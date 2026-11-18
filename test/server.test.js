@@ -53,11 +53,11 @@ test('serves the game and persists the complete shared room', async t => {
   assert.equal(sceneSource.status, 200);
   const sceneCode = await sceneSource.text();
   assert.match(sceneCode, /const CUTE_SCENE=/);
-  assert.match(sceneCode, /ceiling:'#f1e8dc'/);
-  assert.match(sceneCode, /outline:'#171717'/);
+  assert.match(sceneCode, /ceiling:'#f8efe2'/);
+  assert.match(sceneCode, /outline:'#4b3f39'/);
   assert.match(sceneCode, /CUTE_SCENE_HEX/);
   assert.match(sceneCode, /uniform float uInkPass/);
-  assert.match(sceneCode, /uniform1f\(loc\.outline,0\).*drawArrays[\s\S]*uniform1f\(loc\.outline,.024\)/);
+  assert.match(sceneCode, /uniform1f\(loc\.outline,.022\)/);
   assert.match(sceneCode, /vDepth-58/);
 
   const messages = [
